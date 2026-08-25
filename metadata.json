@@ -1,0 +1,10 @@
+{
+  "name": "AI Trivia Arena",
+  "description": "GAG Core OS — Sistema Operacional de IA Multi-Agente para a GAG Visual com KIA Master Orchestrator, Sinergia Operacional, Diagnóstico Financeiro RAG e Dispatcher 24/7.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
