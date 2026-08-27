@@ -9,6 +9,7 @@ import {
   Calendar,
   Users,
   Wand2,
+  MessageSquare,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { NavigationTab } from "../types";
@@ -20,12 +21,12 @@ export const MobileNav: React.FC = () => {
     (t) => t.status === "TODO" || t.status === "IN_PROGRESS"
   ).length;
 
-  const tabs: { id: NavigationTab; label: string; icon: React.ElementType; badge?: number; highlight?: boolean }[] = [
+  const tabs: { id: NavigationTab; label: string; icon: React.ElementType; badge?: number | string; highlight?: boolean }[] = [
     { id: "dashboard", label: "Painel", icon: LayoutDashboard },
-    { id: "studio", label: "Estúdio & Vídeo", icon: Wand2, highlight: true },
     { id: "kia", label: "KIA", icon: Bot },
+    { id: "whatsapp", label: "WhatsApp", icon: MessageSquare, highlight: true, badge: "24/7" },
     { id: "tasks", label: "Tarefas", icon: CheckSquare, badge: pendingTasks > 0 ? pendingTasks : undefined },
-    { id: "scanner", label: "Scanner", icon: FileSearch },
+    { id: "studio", label: "Estúdio", icon: Wand2 },
     { id: "settings", label: "Definições", icon: Settings },
   ];
 

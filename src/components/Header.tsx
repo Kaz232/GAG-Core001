@@ -2,8 +2,11 @@ import React, { useState } from "react";
 import {
   Sparkles,
   Shield,
+  ShieldAlert,
   Volume2,
   VolumeX,
+  Mic,
+  MicOff,
   Search,
   Cpu,
   Layers,
@@ -164,7 +167,16 @@ export const Header: React.FC = () => {
           <span className="font-black tracking-wide">⚡ Disparar Sinergia</span>
         </button>
 
-        {/* Quick Enterprise Tools: Simulator & Kaza Webhooks */}
+        {/* Quick Enterprise Tools: Autocura, Simulator & Kaza Webhooks */}
+        <button
+          onClick={() => setActiveTab("incidents")}
+          className="hidden lg:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-semibold transition-colors"
+          title="Central de Autocura e Resolução Automática de Erros"
+        >
+          <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Autocura</span>
+        </button>
+
         <button
           onClick={() => setIsScenarioModalOpen(true)}
           className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 text-indigo-300 text-xs font-semibold transition-colors"
@@ -201,6 +213,35 @@ export const Header: React.FC = () => {
         >
           <Smartphone className="w-3.5 h-3.5 text-amber-400" />
           <span className="hidden sm:inline">Instalar App</span>
+        </button>
+
+        {/* Wake Word "KIA" Hands-Free Detector Toggle */}
+        <button
+          onClick={() => {
+            const next = !(systemSettings.wakeWordEnabled ?? true);
+            updateSettings({ wakeWordEnabled: next });
+          }}
+          className={`p-2 rounded-lg border transition-all flex items-center space-x-1.5 ${
+            systemSettings.wakeWordEnabled ?? true
+              ? "bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-sm shadow-amber-500/20"
+              : "bg-slate-900 border-slate-800 text-slate-500 hover:text-slate-300"
+          }`}
+          title={
+            systemSettings.wakeWordEnabled ?? true
+              ? 'Detetor de Voz Ativo: Diga "KIA" ou "Ei KIA" a qualquer momento para comandar'
+              : 'Detetor de Voz "KIA" Desativado (Clique para Ativar Modo Mãos-Livres)'
+          }
+        >
+          {systemSettings.wakeWordEnabled ?? true ? (
+            <>
+              <Mic className="w-4 h-4 text-amber-400 animate-pulse" />
+              <span className="text-[10px] font-black uppercase text-amber-300 hidden xl:inline">
+                "KIA" ON
+              </span>
+            </>
+          ) : (
+            <MicOff className="w-4 h-4" />
+          )}
         </button>
 
         {/* Audio TTS toggle */}

@@ -13,13 +13,16 @@ import { AgentsView } from "./components/AgentsView";
 import { SkillsView } from "./components/SkillsView";
 import { AgentFactoryView } from "./components/AgentFactoryView";
 import { AuditLogView } from "./components/AuditLogView";
+import { IncidentManagerView } from "./components/IncidentManagerView";
 import { SettingsView } from "./components/SettingsView";
+import { WhatsAppIntegrationView } from "./components/WhatsAppIntegrationView";
 import { MultimodalStudioView } from "./components/MultimodalStudioView";
 import { AuthGateway } from "./components/AuthGateway";
 import { SynergyWalkthroughModal } from "./components/SynergyWalkthroughModal";
 import { GlobalSynergyModal } from "./components/GlobalSynergyModal";
 import { ScenarioSimulatorModal } from "./components/ScenarioSimulatorModal";
 import { KazaDispatcherModal } from "./components/KazaDispatcherModal";
+import { KiaWakeWordBanner } from "./components/KiaWakeWordBanner";
 
 const MainLayout: React.FC = () => {
   const {
@@ -59,7 +62,9 @@ const MainLayout: React.FC = () => {
           {activeTab === "agents" && <AgentsView />}
           {activeTab === "skills" && <SkillsView />}
           {activeTab === "agent_factory" && <AgentFactoryView />}
+          {activeTab === "incidents" && <IncidentManagerView />}
           {activeTab === "audit" && <AuditLogView />}
+          {activeTab === "whatsapp" && <WhatsAppIntegrationView />}
           {activeTab === "settings" && <SettingsView />}
         </main>
       </div>
@@ -90,6 +95,9 @@ const MainLayout: React.FC = () => {
         isOpen={isKazaModalOpen}
         onClose={() => setIsKazaModalOpen(false)}
       />
+
+      {/* Persistent Continuous Wake-Word ("KIA") Voice Detector HUD */}
+      <KiaWakeWordBanner />
     </div>
   );
 };

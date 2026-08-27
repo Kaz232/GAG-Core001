@@ -342,8 +342,9 @@ export function interpretVoiceCommand(transcript: string): ParsedVoiceCommand {
 
   // 5. Create Task Command
   const taskPatterns = [
-    /^(?:cria|criar|adiciona|adicionar|nova|regista|registar)\s+(?:uma\s+)?tarefa(?:\s+(?:chamada|intitulada|para|de))?\s+(.+)$/i,
-    /^(?:lembra-me de|lembrar de|agendar tarefa para)\s+(.+)$/i,
+    /^(?:cria|criar|adiciona|adicionar|nova|regista|registar|agenda|agendar)\s+(?:uma\s+)?tarefa(?:\s+(?:chamada|intitulada|para|de))?\s+(.+)$/i,
+    /^(?:lembra-me de|lembrar de|lembre-me de|agendar tarefa para|apontar tarefa|colocar no backlog)\s+(.+)$/i,
+    /^(?:cria|criar|adiciona|adicionar)\s+(.+)\s+no\s+(?:backlog|kanban|tarefas)$/i,
   ];
 
   for (const pattern of taskPatterns) {

@@ -35,6 +35,7 @@ import { useApp } from "../context/AppContext";
 import { ChatMessage, ActionCard } from "../types";
 import { speakNaturalText, stopTtsAudio, playSfx } from "../utils/audio";
 import { interpretVoiceCommand } from "../utils/voiceCommands";
+import { wakeWordDetector } from "../utils/wakeWordDetector";
 import { KiaCapabilitiesModal } from "./KiaCapabilitiesModal";
 import { AgentAvatar } from "./AgentAvatar";
 
@@ -68,6 +69,7 @@ export const KiaChatView: React.FC = () => {
   const [liveTranscript, setLiveTranscript] = useState("");
   const [isTranscribingAi, setIsTranscribingAi] = useState(false);
   const [voiceStatusNotice, setVoiceStatusNotice] = useState<string | null>(null);
+  const [isSilenceCountdown, setIsSilenceCountdown] = useState(false);
 
   const [isSpeakingLive, setIsSpeakingLive] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -88,6 +90,12 @@ export const KiaChatView: React.FC = () => {
   const audioChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<any>(null);
   const recordingMimeTypeRef = useRef<string>("audio/webm");
+
+  // VAD (Voice Activity Detection) Silence Detection Refs
+  const silenceTimerRef = useRef<any>(null);
+  const liveTranscriptRef = useRef<string>("");
+  const speechDetectedRef = useRef<boolean>(false);
+  const autoSentRef = useRef<boolean>(false);
 
   // Dynamically compute contextual Smart Suggestions based on conversation history
   const getSmartSuggestions = (): { label: string; prompt: string; icon?: string }[] => {
@@ -170,14 +178,36 @@ export const KiaChatView: React.FC = () => {
     scrollToBottom();
   }, [chatMessages, isKiaThinking, liveTranscript, isRecordingAudio]);
 
-  // Clean up all audio nodes on unmount
+  // Clean up all audio nodes and silence timers on unmount
   useEffect(() => {
     return () => {
       cleanupAudioRecording();
     };
   }, []);
 
+  // Listen for global Wake-Word trigger event to start microphone recording hands-free
+  useEffect(() => {
+    const handleVoiceStartEvent = () => {
+      if (!isRecordingAudio && !isKiaThinking) {
+        startVoiceRecording();
+      }
+    };
+    window.addEventListener("kia-start-voice-recording", handleVoiceStartEvent);
+    return () => {
+      window.removeEventListener("kia-start-voice-recording", handleVoiceStartEvent);
+    };
+  }, [isRecordingAudio, isKiaThinking]);
+
+  // Mute wake-word background detector while KIA is speaking TTS or actively recording/thinking
+  useEffect(() => {
+    wakeWordDetector.setMutedForPlayback(isSpeakingLive || isRecordingAudio || isKiaThinking);
+  }, [isSpeakingLive, isRecordingAudio, isKiaThinking]);
+
   const cleanupAudioRecording = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
@@ -215,9 +245,31 @@ export const KiaChatView: React.FC = () => {
     }
     analyserRef.current = null;
     setIsRecordingAudio(false);
+    setIsSilenceCountdown(false);
   };
 
-  // Start Real-Time Voice Recording with Microphone API + Live Equalizer + Web Speech
+  // Schedule auto-dispatch when user pauses or stops speaking (Strict Hands-Free VAD)
+  const scheduleSilenceAutoSend = (text: string) => {
+    if (!text || text.trim().length < 2) return;
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+    }
+
+    setIsSilenceCountdown(true);
+    // Ultra-fast natural conversational pause detection (300ms default for instantaneous responsiveness)
+    const delay = systemSettings.voiceSilenceDelayMs || 300;
+
+    silenceTimerRef.current = setTimeout(() => {
+      if (!autoSentRef.current) {
+        autoSentRef.current = true;
+        setIsSilenceCountdown(false);
+        stopVoiceRecordingAndSend();
+      }
+    }, delay);
+  };
+
+  // Start Real-Time Voice Recording with Microphone API + Live Equalizer + Web Speech + VAD
   const startVoiceRecording = async () => {
     // Stop any ongoing TTS audio
     stopTtsAudio();
@@ -225,7 +277,16 @@ export const KiaChatView: React.FC = () => {
     setIsPlayingAudioId(null);
     setVoiceStatusNotice(null);
     setLiveTranscript("");
+    liveTranscriptRef.current = "";
+    speechDetectedRef.current = false;
+    autoSentRef.current = false;
+    setIsSilenceCountdown(false);
     setRecordingDuration(0);
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setVoiceStatusNotice("⚠️ O seu navegador não suporta acesso ao Microfone.");
@@ -242,7 +303,7 @@ export const KiaChatView: React.FC = () => {
       });
       audioStreamRef.current = stream;
 
-      // 1. Initialize Web Audio API Analyser for Live Waveform Frequency Visualization
+      // 1. Initialize Web Audio API Analyser for Live Waveform Frequency Visualization & VAD
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtxClass) {
         const audioCtx = new AudioCtxClass();
@@ -254,12 +315,11 @@ export const KiaChatView: React.FC = () => {
         audioContextRef.current = audioCtx;
         analyserRef.current = analyser;
 
-        // Throttled loop to sample 16 frequency bands without choking React state re-renders
+        // Throttled loop to sample 16 frequency bands
         let lastSampleTime = 0;
         const updateAudioLevels = (now: number) => {
           if (!analyserRef.current) return;
 
-          // Only update React state every 75ms to prioritize AI execution thread
           if (now - lastSampleTime > 75) {
             lastSampleTime = now;
             const bufferLength = analyserRef.current.frequencyBinCount;
@@ -269,14 +329,21 @@ export const KiaChatView: React.FC = () => {
             const barsCount = 16;
             const step = Math.max(1, Math.floor(bufferLength / barsCount));
             const newLevels: number[] = [];
+            let maxEnergy = 0;
 
             for (let i = 0; i < barsCount; i++) {
               const val = dataArray[i * step] || 0;
+              if (val > maxEnergy) maxEnergy = val;
               const pct = Math.min(100, Math.max(12, Math.round((val / 255) * 100)));
               newLevels.push(pct);
             }
 
             setAudioLevels(newLevels);
+
+            // If voice energy was previously active and user stopped speaking, confirm VAD timer
+            if (maxEnergy > 45) {
+              speechDetectedRef.current = true;
+            }
           }
 
           animFrameRef.current = requestAnimationFrame(updateAudioLevels);
@@ -319,7 +386,7 @@ export const KiaChatView: React.FC = () => {
         mediaRecorderRef.current = recorder;
       }
 
-      // 3. Initialize Live Web Speech Recognition for instant word streaming
+      // 3. Initialize Live Web Speech Recognition for instant word streaming & silence detection
       const SpeechRecognition =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
@@ -346,7 +413,40 @@ export const KiaChatView: React.FC = () => {
             }
             const combined = (finalStr + interimStr).trim();
             if (combined) {
+              liveTranscriptRef.current = combined;
               setLiveTranscript(combined);
+              speechDetectedRef.current = true;
+
+              // Immediately reset the silence countdown timer on each new token
+              scheduleSilenceAutoSend(combined);
+            }
+          };
+
+          // Native speech end event from browser: Trigger instant auto-send on pause
+          recognition.onspeechend = () => {
+            if (
+              liveTranscriptRef.current.trim().length >= 2 &&
+              !autoSentRef.current
+            ) {
+              setIsSilenceCountdown(true);
+              if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = setTimeout(() => {
+                if (!autoSentRef.current) {
+                  autoSentRef.current = true;
+                  stopVoiceRecordingAndSend();
+                }
+              }, 150);
+            }
+          };
+
+          recognition.onend = () => {
+            if (
+              isRecordingAudio &&
+              liveTranscriptRef.current.trim().length >= 2 &&
+              !autoSentRef.current
+            ) {
+              autoSentRef.current = true;
+              stopVoiceRecordingAndSend();
             }
           };
 
@@ -396,9 +496,9 @@ export const KiaChatView: React.FC = () => {
     });
   };
 
-  // Finish Recording, Transcribe (with fallback to Gemini Multimodal Audio if needed) and Execute Command
+  // Finish Recording, Transcribe and Execute Command
   const stopVoiceRecordingAndSend = async () => {
-    const currentLiveText = liveTranscript.trim();
+    const currentLiveText = (liveTranscriptRef.current || liveTranscript).trim();
     const mimeType = recordingMimeTypeRef.current;
 
     // Stop recording devices cleanly
@@ -410,6 +510,7 @@ export const KiaChatView: React.FC = () => {
       setVoiceStatusNotice(`Comando de voz: "${currentLiveText}"`);
       await handleVoiceCommandExecution(currentLiveText);
       setLiveTranscript("");
+      liveTranscriptRef.current = "";
       return;
     }
 
@@ -438,6 +539,7 @@ export const KiaChatView: React.FC = () => {
           setVoiceStatusNotice(`Voz reconhecida: "${transcribed}"`);
           await handleVoiceCommandExecution(transcribed);
           setLiveTranscript("");
+          liveTranscriptRef.current = "";
         } else {
           setVoiceStatusNotice("Nenhum texto detetado na gravação de voz.");
           setTimeout(() => setVoiceStatusNotice(null), 4000);
@@ -613,9 +715,16 @@ export const KiaChatView: React.FC = () => {
     try {
       await speakNaturalText(text, {
         voiceName: systemSettings.voiceName || selectedVoice,
+        engine: systemSettings.voiceEngine || "instant_browser",
         onEnd: () => {
           setIsSpeakingLive(false);
           setIsPlayingAudioId(null);
+          // If continuous voice mode is enabled, reactivate listening automatically
+          if (systemSettings.voiceContinuous) {
+            setTimeout(() => {
+              startVoiceRecording();
+            }, 400);
+          }
         },
       });
     } catch {
@@ -709,6 +818,33 @@ export const KiaChatView: React.FC = () => {
         </div>
 
         <div className="flex items-center space-x-2 self-end sm:self-auto">
+          {/* Hands-Free Wake Word Pill Button */}
+          <button
+            onClick={() => {
+              const next = !(systemSettings.wakeWordEnabled ?? true);
+              updateSettings({ wakeWordEnabled: next });
+              playSfx("click");
+            }}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-sm ${
+              systemSettings.wakeWordEnabled ?? true
+                ? "bg-amber-500/20 border-amber-500/50 text-amber-300 shadow-amber-500/10"
+                : "bg-slate-900/90 border-slate-800 text-slate-500 hover:text-slate-300"
+            }`}
+            title="Ativar/Desativar escuta contínua de 'KIA' (Wake Word)"
+          >
+            {systemSettings.wakeWordEnabled ?? true ? (
+              <>
+                <Mic className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span className="font-bold">Wake "KIA": ON</span>
+              </>
+            ) : (
+              <>
+                <MicOff className="w-3.5 h-3.5 text-slate-500" />
+                <span>Wake "KIA": OFF</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={() => setShowCapabilitiesModal(true)}
             className="px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-sm"
@@ -746,10 +882,79 @@ export const KiaChatView: React.FC = () => {
 
       {/* Voice Configuration Drawer */}
       {showVoiceSettings && (
-        <div className="p-3.5 rounded-2xl bg-[#0b0f19] border border-amber-500/30 mb-3 shadow-xl animate-fadeIn text-xs">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="p-4 rounded-2xl bg-[#0b0f19] border border-amber-500/30 mb-3 shadow-xl animate-fadeIn text-xs space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pb-2 border-b border-slate-800/80">
+            {/* Wake Word "KIA" Hands-Free */}
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
+              <div>
+                <span className="text-amber-200 font-semibold flex items-center gap-1.5">
+                  <Mic className="w-3.5 h-3.5 text-amber-400" />
+                  Wake Word "KIA":
+                </span>
+                <p className="text-[11px] text-slate-300">
+                  Diga "KIA" ou "Ei KIA" para ativar sem clicar no botão.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                <input
+                  type="checkbox"
+                  checked={systemSettings.wakeWordEnabled ?? true}
+                  onChange={(e) => updateSettings({ wakeWordEnabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {/* Auto Send on Silence (VAD) */}
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <div>
+                <span className="text-white font-semibold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  Envio por Silêncio (Hands-Free):
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Envia o comando imediatamente assim que terminares de falar.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                <input
+                  type="checkbox"
+                  checked={systemSettings.voiceVadEnabled !== false}
+                  onChange={(e) => updateSettings({ voiceVadEnabled: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+
+            {/* Continuous Voice Conversation Mode */}
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <div>
+                <span className="text-white font-semibold flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-emerald-400" />
+                  Modo Contínuo:
+                </span>
+                <p className="text-[11px] text-slate-400">
+                  Reabre o microfone automaticamente após a KIA responder.
+                </p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer ml-3 shrink-0">
+                <input
+                  type="checkbox"
+                  checked={!!systemSettings.voiceContinuous}
+                  onChange={(e) => updateSettings({ voiceContinuous: e.target.checked })}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            {/* Auto Audio TTS */}
             <div className="flex items-center space-x-3">
-              <span className="text-slate-300 font-semibold">Leitura Automática por Voz (TTS):</span>
+              <span className="text-slate-300 font-semibold">Leitura por Voz (TTS):</span>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
@@ -761,8 +966,22 @@ export const KiaChatView: React.FC = () => {
               </label>
             </div>
 
+            {/* Voice Engine Selector */}
             <div className="flex items-center space-x-2">
-              <span className="text-slate-400">Voz da KIA:</span>
+              <span className="text-slate-400">Motor de Saída:</span>
+              <select
+                value={systemSettings.voiceEngine || "instant_browser"}
+                onChange={(e) => updateSettings({ voiceEngine: e.target.value as any })}
+                className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:border-amber-500"
+              >
+                <option value="instant_browser">Instantâneo (Browser 0ms Latência)</option>
+                <option value="gemini_studio">Estúdio Neural (Gemini 24kHz)</option>
+              </select>
+            </div>
+
+            {/* Voice Name Selector */}
+            <div className="flex items-center space-x-2">
+              <span className="text-slate-400">Voz:</span>
               <select
                 value={selectedVoice}
                 onChange={(e) => {
@@ -771,9 +990,9 @@ export const KiaChatView: React.FC = () => {
                 }}
                 className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-white text-xs focus:outline-none focus:border-amber-500"
               >
-                <option value="Kore">Kore (Executiva & Polida)</option>
+                <option value="Kore">Kore (Executiva & Clara)</option>
                 <option value="Aoede">Aoede (Expressiva & Melódica)</option>
-                <option value="Puck">Puck (Dinâmico & Rápido)</option>
+                <option value="Puck">Puck (Dinâmico & Ágil)</option>
                 <option value="Fenrir">Fenrir (Firme & Autoridade)</option>
                 <option value="Charon">Charon (Calmo & Profundo)</option>
               </select>
@@ -781,18 +1000,18 @@ export const KiaChatView: React.FC = () => {
               <button
                 type="button"
                 onClick={() =>
-                  speakFeedback(`Olá, sou a KIA. A voz neural ${selectedVoice} está ativa no GAG Core.`)
+                  speakFeedback(`Olá, sou a KIA. O modo conversacional em tempo real está pronto.`)
                 }
                 className="px-2.5 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/30 text-[11px] font-medium transition-colors"
               >
-                Ouvir Demonstração
+                Testar Voz
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Real-time Voice Audio Recorder & Equalizer Console (Microphone API) */}
+      {/* Real-time Voice Audio Recorder & Equalizer Console (Microphone API + VAD) */}
       {(isRecordingAudio || isTranscribingAi) && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-[#0e1322] to-slate-950 border-2 border-amber-500/60 mb-3 shadow-2xl animate-fadeIn relative overflow-hidden">
           {/* Subtle Ambient Glow */}
@@ -805,13 +1024,29 @@ export const KiaChatView: React.FC = () => {
               <div className="flex items-center space-x-2 px-3 py-1 bg-red-500/20 border border-red-500/50 rounded-full">
                 <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
                 <span className="text-xs font-bold text-red-300 uppercase tracking-wider">
-                  {isTranscribingAi ? "Processando IA" : "Microfone Ativo"}
+                  {isTranscribingAi ? "Processando IA" : "A Ouvir em Tempo Real"}
                 </span>
               </div>
               <div className="flex items-center space-x-1.5 text-xs font-mono font-bold text-white bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
                 <Clock className="w-3.5 h-3.5 text-amber-400" />
                 <span>{formatTime(recordingDuration)}</span>
               </div>
+
+              {/* VAD Silence Detection Badge */}
+              {systemSettings.voiceVadEnabled !== false && (
+                <div className={`flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all ${
+                  isSilenceCountdown
+                    ? "bg-amber-500/30 text-amber-200 border-amber-400 animate-pulse"
+                    : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                }`}>
+                  <Sparkles className="w-3 h-3 text-emerald-400" />
+                  <span>
+                    {isSilenceCountdown
+                      ? "⚡ Silêncio detetado — a responder..."
+                      : "⚡ Envio Automático por Silêncio Ativo"}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Live 16-Bar Frequency Equalizer */}
@@ -828,57 +1063,42 @@ export const KiaChatView: React.FC = () => {
               ))}
             </div>
 
-            {/* Action Buttons */}
+            {/* Hands-Free State & Cancel Controls */}
             <div className="flex items-center space-x-2 self-end sm:self-auto">
               <button
                 type="button"
-                onClick={stopVoiceRecordingAndSend}
-                disabled={isTranscribingAi}
-                className="px-4 py-2 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-bold text-xs rounded-xl shadow-lg flex items-center space-x-1.5 transition-all active:scale-95 disabled:opacity-50"
-                title="Concluir e enviar comando imediatamente sem confirmação"
-              >
-                {isTranscribingAi ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>A transcrever...</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Concluir & Enviar Imediatamente</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
                 onClick={cancelVoiceRecording}
-                className="px-2.5 py-2 text-slate-400 hover:text-red-400 rounded-xl hover:bg-slate-900 transition-colors text-xs flex items-center space-x-1"
-                title="Descartar Gravação"
+                className="px-3 py-2 text-slate-300 hover:text-red-400 bg-slate-900/80 hover:bg-red-950/30 border border-slate-800 rounded-xl transition-colors text-xs flex items-center space-x-1.5"
+                title="Fechar Microfone"
               >
-                <X className="w-4 h-4" />
-                <span className="hidden sm:inline">Descartar</span>
+                <MicOff className="w-3.5 h-3.5 text-red-400" />
+                <span>Parar Microfone</span>
               </button>
             </div>
           </div>
 
           {/* Live Transcript Stream Output */}
-          <div className="p-3 rounded-xl bg-black/60 border border-slate-800/90 min-h-[44px] flex items-center">
+          <div className="p-3 rounded-xl bg-black/60 border border-slate-800/90 min-h-[44px] flex items-center justify-between gap-3">
             {liveTranscript ? (
-              <p className="text-xs sm:text-sm text-amber-200 font-medium leading-relaxed">
-                <span className="text-slate-400 font-normal">Transcrevendo: </span>
-                "{liveTranscript}"
-                <span className="inline-block w-1.5 h-4 bg-amber-400 ml-1 animate-pulse align-middle" />
-              </p>
+              <div className="flex items-center space-x-2 w-full">
+                <p className="text-xs sm:text-sm text-amber-200 font-medium leading-relaxed flex-1">
+                  <span className="text-slate-400 font-normal">A ouvir em direto: </span>
+                  "{liveTranscript}"
+                  <span className="inline-block w-1.5 h-4 bg-amber-400 ml-1 animate-pulse align-middle" />
+                </p>
+                <span className="text-[10px] text-emerald-400 font-mono shrink-0 hidden sm:inline bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                  ✨ Resposta automática ao pausar
+                </span>
+              </div>
             ) : isTranscribingAi ? (
               <div className="flex items-center space-x-2 text-xs text-amber-300">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                <span>A transcrever o sinal de áudio do microfone através do modelo multimodal...</span>
+                <span>A processar instrução de voz instantaneamente...</span>
               </div>
             ) : (
               <p className="text-xs text-slate-400 italic flex items-center space-x-2">
                 <Mic className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                <span>Fala claramente perto do microfone. As tuas palavras aparecem aqui em tempo real...</span>
+                <span>Modo mãos-livres ativo: Fala naturalmente. A KIA deteta o fim da tua fala e responde imediatamente.</span>
               </p>
             )}
           </div>
@@ -913,6 +1133,7 @@ export const KiaChatView: React.FC = () => {
         {chatMessages.map((msg, idx) => {
           const isAssistant = msg.role === "assistant";
           const isPlayingThis = isPlayingAudioId === msg.id;
+          const isMsgStreaming = msg.isStreaming;
 
           return (
             <div
@@ -926,19 +1147,27 @@ export const KiaChatView: React.FC = () => {
               )}
 
               <div
-                className={`max-w-2xl rounded-2xl p-4 shadow-md ${
+                className={`max-w-2xl rounded-2xl p-4 shadow-md transition-all ${
                   isAssistant
-                    ? "bg-[#0b0f19] border border-slate-800/90 text-slate-200"
+                    ? isMsgStreaming
+                      ? "bg-[#0b0f19] border-2 border-amber-500/50 text-slate-200 shadow-amber-500/10 shadow-lg"
+                      : "bg-[#0b0f19] border border-slate-800/90 text-slate-200"
                     : "bg-gradient-to-br from-amber-500 to-yellow-600 text-black font-medium"
                 }`}
               >
                 {/* Message Header */}
                 <div className="flex items-center justify-between text-[10px] pb-1.5 mb-1.5 border-b border-black/10 dark:border-slate-800/60">
                   <div className="flex items-center space-x-1.5">
-                    <span className="font-bold">
+                    <span className="font-bold flex items-center gap-1.5">
                       {isAssistant ? "KIA Master AI" : currentUser.name}
+                      {isMsgStreaming && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[9px] border border-amber-500/40 animate-pulse">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                          Streaming Gemini Live
+                        </span>
+                      )}
                     </span>
-                    {isAssistant && msg.capability && (
+                    {isAssistant && msg.capability && !isMsgStreaming && (
                       <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono text-[9px] border border-amber-500/30">
                         {msg.capability}
                       </span>
@@ -947,14 +1176,28 @@ export const KiaChatView: React.FC = () => {
                   <span className="opacity-60">{new Date(msg.timestamp).toLocaleTimeString()}</span>
                 </div>
 
-                {/* Message Body */}
+                {/* Message Body with real-time stream token rendering */}
                 <div className="text-xs sm:text-sm whitespace-pre-wrap leading-relaxed">
-                  {msg.content}
+                  {msg.content ? (
+                    <>
+                      {msg.content}
+                      {isMsgStreaming && (
+                        <span className="inline-block w-2 h-4 ml-1 bg-amber-400 animate-pulse align-middle" />
+                      )}
+                    </>
+                  ) : isMsgStreaming ? (
+                    <div className="flex items-center space-x-2 text-amber-300/80 py-1">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                      <span className="italic text-xs">A iniciar resposta em direto com Gemini...</span>
+                    </div>
+                  ) : (
+                    msg.content
+                  )}
                 </div>
 
                 {/* Action Card if present */}
                 {msg.actionCard && (
-                  <div className="mt-3 p-3 rounded-xl bg-slate-900/90 border border-amber-500/30 text-xs">
+                  <div className="mt-3 p-3 rounded-xl bg-slate-900/90 border border-amber-500/30 text-xs animate-fadeIn">
                     <div className="flex items-center space-x-2 text-amber-400 font-bold mb-1">
                       <Zap className="w-3.5 h-3.5" />
                       <span>{msg.actionCard.title}</span>
@@ -983,7 +1226,7 @@ export const KiaChatView: React.FC = () => {
                 )}
 
                 {/* Footer Controls for Assistant Messages */}
-                {isAssistant && (
+                {isAssistant && !isMsgStreaming && (
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-slate-800/60 text-[11px]">
                     <div className="flex items-center space-x-2 text-slate-400">
                       {msg.toolsUsed && msg.toolsUsed.length > 0 && (
@@ -1033,12 +1276,12 @@ export const KiaChatView: React.FC = () => {
           );
         })}
 
-        {isKiaThinking && (
+        {isKiaThinking && !chatMessages.some((m) => m.isStreaming) && (
           <div className="flex items-start space-x-3 justify-start animate-pulse">
             <AgentAvatar agentId="agent-kia" size="sm" />
             <div className="p-4 rounded-2xl bg-[#0b0f19] border border-amber-500/30 text-xs text-amber-300 flex items-center space-x-2.5">
               <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
-              <span>A KIA está a interpretar instrução, consultar base de conhecimento e executar...</span>
+              <span>A conectar ao Gemini e a preparar stream em direto...</span>
             </div>
           </div>
         )}
@@ -1116,8 +1359,8 @@ export const KiaChatView: React.FC = () => {
           }`}
           title={
             isRecordingAudio
-              ? "Gravação ativa... Clica para enviar o áudio"
-              : "Gravar comando por voz em tempo real (Microphone API)"
+              ? "A escutar em direto... Envio automático ao pausar"
+              : "Falar por voz (detetor automático de silêncio)"
           }
         >
           {isRecordingAudio ? <Square className="w-4 h-4 fill-current text-white" /> : <Mic className="w-4 h-4 text-amber-400" />}

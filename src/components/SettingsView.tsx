@@ -59,6 +59,8 @@ export const SettingsView: React.FC = () => {
   const [aiModel, setAiModel] = useState(systemSettings.aiModel || "gemini-3.7-flash");
   const [autoAudioTts, setAutoAudioTts] = useState(systemSettings.autoAudioTts);
   const [voiceName, setVoiceName] = useState(systemSettings.voiceName || "Kore");
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(systemSettings.wakeWordEnabled ?? true);
+  const [wakeWordSoundFeedback, setWakeWordSoundFeedback] = useState(systemSettings.wakeWordSoundFeedback ?? true);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [testingVoice, setTestingVoice] = useState(false);
 
@@ -76,8 +78,10 @@ export const SettingsView: React.FC = () => {
       aiModel,
       autoAudioTts,
       voiceName,
+      wakeWordEnabled,
+      wakeWordSoundFeedback,
     });
-    setSavedNotice("Configurações de IA e Voz salvas com sucesso!");
+    setSavedNotice("Configurações de IA, Voz e Detetor 'KIA' salvas com sucesso!");
     setTimeout(() => setSavedNotice(null), 3000);
   };
 
@@ -387,11 +391,44 @@ export const SettingsView: React.FC = () => {
               />
             </div>
 
+            {/* Wake Word Detection Setting */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+              <div className="flex items-center space-x-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <div>
+                  <span className="font-semibold text-amber-200 flex items-center gap-1.5">
+                    Detetor de Voz Contínuo (Wake Word "KIA")
+                  </span>
+                  <p className="text-[10px] text-slate-300">
+                    Ativação hands-free ao pronunciar "KIA", "Ei KIA" ou "Olá KIA" sem necessidade de clicar no botão.
+                  </p>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={wakeWordEnabled}
+                onChange={(e) => setWakeWordEnabled(e.target.checked)}
+                className="w-4 h-4 text-amber-500 accent-amber-500 rounded cursor-pointer"
+              />
+            </div>
+
+            {wakeWordEnabled && (
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[11px]">
+                <span className="text-slate-300">Sinal Sonoro de Ativação (Chime):</span>
+                <input
+                  type="checkbox"
+                  checked={wakeWordSoundFeedback}
+                  onChange={(e) => setWakeWordSoundFeedback(e.target.checked)}
+                  className="w-4 h-4 text-amber-500 accent-amber-500 rounded cursor-pointer"
+                />
+              </div>
+            )}
+
             <button
               onClick={handleSaveAiSettings}
               className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs rounded-xl border border-slate-700 hover:border-amber-500/40 transition-colors"
             >
-              Salvar Parâmetros de IA
+              Salvar Parâmetros de IA & Voz
             </button>
 
             {savedNotice && (

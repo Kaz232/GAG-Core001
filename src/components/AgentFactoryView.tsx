@@ -16,13 +16,19 @@ import {
   X,
   Cpu,
   Zap,
+  FileJson,
+  KeyRound,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { Agent, AgentStatus } from "../types";
+import { N8NWorkflowTemplatesTab } from "./N8NWorkflowTemplatesTab";
+import { N8NEnvironmentVault } from "./N8NEnvironmentVault";
+import { N8NWorkflowTemplate } from "../core/tools/n8n/workflowSnippets";
 
 export const AgentFactoryView: React.FC = () => {
   const { agents, skills, createAgent, updateAgent, setActiveTab } = useApp();
 
+  const [factorySubTab, setFactorySubTab] = useState<"builder" | "templates" | "vault">("builder");
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
 
@@ -220,6 +226,33 @@ export const AgentFactoryView: React.FC = () => {
     }
   };
 
+  const handleUseN8NTemplate = (template: N8NWorkflowTemplate) => {
+    setFormData({
+      name: template.name,
+      slug: template.agentSlugSuggestion,
+      roleTitle: template.agentRoleSuggestion,
+      objective: template.agentObjectiveSuggestion,
+      description: `Agente operacional vinculado ao workflow N8N "${template.name}" (${template.badge}).`,
+      systemPrompt: `Tu és o agente de automação especialista em ${template.name} da GAG Visual (Luanda, Angola).\nTu orquestras o webhook /${template.webhookPath} com autonomia de Nível ${template.autonomyLevel}.\nGarante conformidade operacional, validação de dados de Angola e comunicação corporativa de alto nível.`,
+      skills: ["gag-prompt-engineering", "gag-workflow-orchestration"],
+      permissions: ["conversation:execute", "knowledge:read", "task:manage"],
+      avatarColor:
+        template.category === "CRM"
+          ? "#10B981"
+          : template.category === "FINANCE"
+          ? "#F59E0B"
+          : template.category === "ERP"
+          ? "#3B82F6"
+          : template.category === "AGT_TAX"
+          ? "#EF4444"
+          : "#8B5CF6",
+      status: "DRAFT",
+      version: "1.0.0",
+    });
+    setAiSuccessNotice(`Template N8N "${template.name}" carregado na Fábrica! Podes ajustar e salvar.`);
+    setFactorySubTab("builder");
+  };
+
   return (
     <div className="space-y-6 pb-12 max-w-7xl mx-auto animate-fadeIn">
       {/* Header Bar */}
@@ -233,7 +266,7 @@ export const AgentFactoryView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Fábrica modular para criação, prototipagem, simulação de sandbox e aprovação de novos agentes especializados.
+            Fábrica modular para criação, prototipagem, templates de workflows N8N e simulação de sandbox.
           </p>
         </div>
 
@@ -245,7 +278,62 @@ export const AgentFactoryView: React.FC = () => {
         </button>
       </div>
 
-      {/* AI Blueprint Fast Track Bar */}
+      {/* Sub-Navigation Tabs */}
+      <div className="flex items-center space-x-2 p-1.5 rounded-2xl bg-[#0b0f19] border border-slate-800">
+        <button
+          onClick={() => setFactorySubTab("builder")}
+          className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition-all ${
+            factorySubTab === "builder"
+              ? "bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+              : "text-slate-400 hover:text-white hover:bg-slate-900/60"
+          }`}
+        >
+          <Factory className="w-4 h-4" />
+          <span>Fábrica & Sandbox (AI Blueprint)</span>
+        </button>
+
+        <button
+          onClick={() => setFactorySubTab("templates")}
+          className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition-all ${
+            factorySubTab === "templates"
+              ? "bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+              : "text-slate-400 hover:text-white hover:bg-slate-900/60"
+          }`}
+        >
+          <FileJson className="w-4 h-4 text-amber-400" />
+          <span>Templates N8N (Workflows GAG)</span>
+          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+            6 Prontos
+          </span>
+        </button>
+
+        <button
+          onClick={() => setFactorySubTab("vault")}
+          className={`flex-1 py-2.5 px-4 rounded-xl font-bold text-xs flex items-center justify-center space-x-2 transition-all ${
+            factorySubTab === "vault"
+              ? "bg-gradient-to-r from-amber-500/20 to-yellow-500/20 text-amber-300 border border-amber-500/40 shadow-sm"
+              : "text-slate-400 hover:text-white hover:bg-slate-900/60"
+          }`}
+        >
+          <KeyRound className="w-4 h-4 text-amber-400" />
+          <span>Cofre de Ambientes & Chaves API</span>
+          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            Seguro
+          </span>
+        </button>
+      </div>
+
+      {/* Content Render Based on Active SubTab */}
+      {factorySubTab === "templates" ? (
+        <N8NWorkflowTemplatesTab
+          onUseTemplateForAgent={handleUseN8NTemplate}
+          onOpenVault={() => setFactorySubTab("vault")}
+        />
+      ) : factorySubTab === "vault" ? (
+        <N8NEnvironmentVault />
+      ) : (
+        <>
+          {/* AI Blueprint Fast Track Bar */}
       <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-[#0e1322] to-slate-950 border border-amber-500/30 shadow-xl">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
@@ -518,6 +606,8 @@ export const AgentFactoryView: React.FC = () => {
           </div>
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

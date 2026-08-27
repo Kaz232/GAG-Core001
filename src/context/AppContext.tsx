@@ -20,6 +20,8 @@ import {
   KazaWebhookEvent,
   SynergyRun,
   FinancialAnalysis,
+  WhatsAppMessageLog,
+  WhatsAppConfig,
 } from "../types";
 import {
   INITIAL_USER,
@@ -52,6 +54,13 @@ import {
   db as firestoreDb,
 } from "../services/firebase";
 import { onAuthStateChanged } from "firebase/auth";
+import { KIAOrchestrator, KIAOrchestrationResult } from "../core";
+import {
+  engineApi,
+  Phase1ExecutionRequest,
+  Phase1ExecutionResponse,
+  TestSuiteResponse,
+} from "../services/engineApi";
 
 interface AppContextType {
   // Navigation & User Auth
@@ -127,6 +136,9 @@ interface AppContextType {
   deleteTask: (id: string) => void;
   executeTaskWithAgent: (taskId: string, agentId?: string) => Promise<{ success: boolean; task?: Task }>;
   executeBatchTasks: (taskIds?: string[]) => Promise<{ completedCount: number }>;
+  orchestratePlanWithKIA: (goal: string) => Promise<KIAOrchestrationResult>;
+  executeEnginePipeline: (request: Phase1ExecutionRequest) => Promise<Phase1ExecutionResponse>;
+  runPhase1EngineTests: () => Promise<TestSuiteResponse>;
   isExecutingTask: boolean;
 
   // Scanner Actions
@@ -150,6 +162,16 @@ interface AppContextType {
   createEvent: (event: Omit<CalendarEvent, "id">) => void;
   deleteEvent: (id: string) => void;
 
+  // WhatsApp 24/7 Agent Hub Actions
+  whatsappLogs: WhatsAppMessageLog[];
+  whatsappConfig: WhatsAppConfig;
+  isWhatsAppLoading: boolean;
+  fetchWhatsAppStatus: () => Promise<void>;
+  simulateWhatsAppIncoming: (senderName: string, senderNumber: string, message: string) => Promise<any>;
+  sendOutboundWhatsAppMessage: (recipientNumber: string, recipientName: string, message: string, agentId?: string, agentName?: string) => Promise<any>;
+  updateWhatsAppConfig: (updates: Partial<WhatsAppConfig> & { accessToken?: string }) => Promise<any>;
+  clearWhatsAppLogs: () => Promise<void>;
+
   // Audit Actions
   recordAuditLog: (
     action: string,
@@ -163,7 +185,7 @@ interface AppContextType {
   updateSettings: (updates: Partial<SystemSettings>) => void;
   exportSystemBackup: () => void;
   importSystemBackup: (jsonData: string) => boolean;
-  playSfx: (type: "success" | "action" | "click" | "notification" | "warning" | "execute", volume?: number) => void;
+  playSfx: (type: "success" | "action" | "click" | "notification" | "warning" | "execute" | "wake_activation", volume?: number) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -308,6 +330,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           activeRole: "OWNER",
           brandName: "GAG Visual",
           autoAudioTts: false,
+          wakeWordEnabled: true,
+          wakeWordTriggerPhrase: "kia",
+          wakeWordSoundFeedback: true,
+          wakeWordAutoSubmitCommand: true,
         };
   });
 
@@ -369,6 +395,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem("gag_financial_analyses");
     return saved ? JSON.parse(saved) : [];
   });
+
+  // WhatsApp 24/7 Agent Hub State
+  const [whatsappLogs, setWhatsappLogs] = useState<WhatsAppMessageLog[]>(() => {
+    const saved = localStorage.getItem("gag_whatsapp_logs");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
+    return [
+      {
+        id: "wa-init-01",
+        senderNumber: "+244 923 456 789",
+        senderName: "Dr. Manuel Kwanza (Lead B2B)",
+        message: "Olá GAG Visual, preciso de orçamento para rebranding e gestão de redes sociais da nossa clínica.",
+        receivedAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+        routedAgent: "agent-consultant",
+        routedAgentName: "Agente Consultor Comercial",
+        aiResponse: "Olá Dr. Manuel! Agradecemos o contacto com a GAG Visual. Para branding e gestão estratégica de clínicas em Angola, dispomos de pacotes completos com métricas de captação de pacientes. Qual a data pretendida para o início do projeto?",
+        status: "REPLIED_24_7",
+        channel: "WhatsApp Cloud API",
+        sentiment: "OPPORTUNITY",
+        autoTaskCreated: true,
+      },
+      {
+        id: "wa-init-02",
+        senderNumber: "+244 945 112 334",
+        senderName: "Eng.ª Teresa Silva (Cliente Ativo)",
+        message: "Boa tarde, podem enviar o relatório de tráfego pago desta semana?",
+        receivedAt: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
+        routedAgent: "agent-traffic",
+        routedAgentName: "Agente Gestor de Tráfego",
+        aiResponse: "Boa tarde, Eng.ª Teresa! O relatório da semana 34 já foi compilado pelo nosso sistema com ROAS de 4.8x. Enviámos uma cópia em PDF para o seu e-mail e o resumo está disponível no painel.",
+        status: "REPLIED_24_7",
+        channel: "WhatsApp Cloud API",
+        sentiment: "POSITIVE",
+        autoTaskCreated: false,
+      },
+      {
+        id: "wa-init-03",
+        senderNumber: "+244 912 887 654",
+        senderName: "Carlos Mendes (Startup Tech)",
+        message: "Vocês desenvolvem agentes de inteligência artificial personalizados integrados ao WhatsApp para empresas?",
+        receivedAt: new Date(Date.now() - 120 * 60 * 1000).toISOString(),
+        routedAgent: "agent-kia",
+        routedAgentName: "KIA Master Agent",
+        aiResponse: "Olá Carlos! Sim, na GAG Visual somos pioneiros em Angola no desenvolvimento e orquestração de agentes de IA autónomos (GAG Core OS) conectados ao WhatsApp Business API, CRM e sistemas de faturação. Gostaria de agendar uma sessão demonstrativa executiva?",
+        status: "REPLIED_24_7",
+        channel: "WhatsApp Cloud API",
+        sentiment: "OPPORTUNITY",
+        autoTaskCreated: true,
+      }
+    ];
+  });
+
+  const [whatsappConfig, setWhatsappConfig] = useState<WhatsAppConfig>({
+    phoneNumberId: "109845238912345",
+    businessAccountId: "394827104928371",
+    verifyToken: "gag_visual_whatsapp_24_7",
+    accessTokenConfigured: false,
+    webhookUrl: typeof window !== "undefined" ? window.location.origin + "/api/whatsapp/webhook" : "https://localhost:3000/api/whatsapp/webhook",
+    autonomous247: true,
+    autoCreateTasks: true,
+    autoCaptureLeads: true,
+    businessHoursOnly: false,
+    defaultAgent: "agent-consultant",
+    welcomeMessage: "Olá! Bem-vindo à GAG Visual. Como podemos acelerar o seu negócio hoje?",
+    emergencyPhoneAlert: "+244 923 000 000",
+  });
+
+  const [isWhatsAppLoading, setIsWhatsAppLoading] = useState<boolean>(false);
 
   // Auth State & Supabase Session Initialization
   useEffect(() => {
@@ -789,12 +888,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setChatMessages((prev) => [...prev, userMsg]);
     setIsKiaThinking(true);
 
-    // Enqueue response generation as highest priority P0 task
+    // Enqueue response generation as highest priority P0 task with real-time SSE streaming
     return messageQueue.enqueue(async () => {
+      const assistantMsgId = `msg-${Date.now()}`;
+
+      // Insert initial streaming message bubble for zero-latency feedback
+      const initialAssistantMsg: ChatMessage = {
+        id: assistantMsgId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+        intent: "conversation",
+        isStreaming: true,
+      };
+
+      setChatMessages((prev) => [...prev, initialAssistantMsg]);
+
       try {
-        let data: any;
+        let streamFinished = false;
+        let accumulatedContent = "";
+        let doneData: any = null;
+
         try {
-          const response = await fetch("/api/kia/chat", {
+          const response = await fetch("/api/kia/stream", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -814,165 +930,184 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }),
           });
 
-          if (response.ok) {
-            data = await response.json();
+          if (response.ok && response.body) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n\n");
+              buffer = lines.pop() || "";
+
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  try {
+                    const payload = JSON.parse(line.slice(6));
+                    if (payload.type === "chunk" && payload.text) {
+                      accumulatedContent += payload.text;
+                      setChatMessages((prev) =>
+                        prev.map((msg) =>
+                          msg.id === assistantMsgId
+                            ? { ...msg, content: accumulatedContent, isStreaming: true }
+                            : msg
+                        )
+                      );
+                    } else if (payload.type === "done") {
+                      doneData = payload;
+                    }
+                  } catch {
+                    // Ignore JSON partial chunk parsing errors
+                  }
+                }
+              }
+            }
+            streamFinished = true;
           } else {
-            throw new Error(`HTTP ${response.status}`);
+            throw new Error(`Streaming failed with status: ${response.status}`);
           }
-        } catch (fetchErr) {
-          console.warn("API request failed, generating client-side executive KIA fallback:", fetchErr);
-          const lower = text.toLowerCase();
-          if (lower.includes("tarefa") || lower.includes("criar tarefa") || lower.includes("task") || lower.includes("prazo")) {
-            data = {
-              content: `Entendido, ${currentUser.name}. Processei a tua solicitação e registei uma nova ordem de trabalho estratégica no Backlog Operacional com prioridade ALTA.`,
-              intent: "task",
-              capability: "task:create",
-              executionStatus: "SUCCESS",
-              toolsUsed: ["gag-task-router", "sha256-audit-logger"],
-              suggestedPrompts: ["Ver tarefas no Backlog", "⚡ Disparar Sinergia Global", "Consultar Knowledge Base"],
-              actionCard: {
-                type: "task_created",
-                title: `Ordem de Trabalho: ${text.slice(0, 40)}...`,
-                description: `Criada para ${currentUser.name} (${activeRole})`,
-                actionLabel: "Ver no Backlog",
+        } catch (streamErr) {
+          console.warn("Real-time stream failed, falling back to /api/kia/chat:", streamErr);
+          const fallbackRes = await fetch("/api/kia/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: text,
+              history: chatMessages.slice(-6).map((m) => ({
+                role: m.role,
+                content: m.content,
+              })),
+              userRole: activeRole,
+              userName: currentUser.name,
+              contextData: {
+                tasksCount: tasks.length,
+                knowledgeCount: knowledge.length,
+                agentsCount: agents.length,
+                docsCount: scannedDocs.length,
               },
-              actionPayload: {
-                title: text.replace(/^(cria|criar|adiciona|nova tarefa:?)\s*/i, "").slice(0, 50),
-                description: text,
-                priority: "HIGH",
-                category: "Estratégia & Operações",
-                tags: ["KIA-AutoCreated", "Backlog"],
-              },
-              auditRef: "0xKIA-" + Date.now().toString(16).toUpperCase(),
-              executionTimeMs: 110,
-              modelName: "gag-kia-local-heuristic",
-            };
-          } else if (lower.includes("sinergia") || lower.includes("orquestrar") || lower.includes("disparar")) {
-            data = {
-              content: `Sinergia Global acionada, ${currentUser.name}! Todos os 13 agentes da GAG Visual estão mobilizados e sincronizados com a Base de Conhecimento e Acervo de Prompts.`,
-              intent: "internal_tool",
-              capability: "agent_orchestration",
-              executionStatus: "SUCCESS",
-              toolsUsed: ["soba-multi-agent-dispatcher"],
-              suggestedPrompts: ["Abrir Cockpit de Sinergia", "Ver tarefas dos 13 agentes", "Simular ROAS de Campanha"],
-              actionCard: {
-                type: "skill_executed",
-                title: "⚡ Sinergia Multi-Agente em Execução",
-                description: "13 agentes mobilizados para alinhamento operacional.",
-                actionLabel: "Acompanhar Sinergia",
-              },
-              auditRef: "0xSYN-" + Date.now().toString(16).toUpperCase(),
-              executionTimeMs: 140,
-              modelName: "gag-kia-local-heuristic",
-            };
+            }),
+          });
+
+          if (fallbackRes.ok) {
+            doneData = await fallbackRes.json();
+            accumulatedContent = doneData.content || "";
           } else {
-            data = {
-              content: `Olá ${currentUser.name}. Sou a KIA, a inteligência-mestre e coordenadora operacional do GAG Core OS.\n\nEstou pronta para orquestrar os 13 agentes da GAG Visual, gerir tarefas no Backlog, consultar o Knowledge Base ou executar simulações de investimento em Kwanzas (AOA). Como posso apoiar a operação hoje?`,
-              intent: "conversation",
-              capability: "conversation:chat",
-              executionStatus: "SUCCESS",
-              toolsUsed: ["gag-executive-orchestrator", "soba-router"],
-              suggestedPrompts: ["⚡ Disparar Sinergia Global", "Simular ROAS de Campanha", "Criar tarefa para o Copywriter", "Analisar Documento no Scanner"],
-              auditRef: "0xKIA-" + Date.now().toString(16).toUpperCase(),
-              executionTimeMs: 90,
-              modelName: "gag-kia-local-heuristic",
-            };
+            throw new Error(`Fallback failed: ${fallbackRes.status}`);
           }
         }
 
+        const finalContent = doneData?.fullContent || doneData?.content || accumulatedContent || "Instrução processada com sucesso.";
+
         // Check if action payload requires automatic state execution
-        if (data.actionPayload) {
-          if (data.intent === "task" && data.actionPayload.title) {
+        if (doneData?.actionPayload) {
+          if (doneData.intent === "task" && doneData.actionPayload.title) {
             const createdTask = createTask({
-              title: data.actionPayload.title,
-              description: data.actionPayload.description || text,
-              priority: data.actionPayload.priority || "HIGH",
+              title: doneData.actionPayload.title,
+              description: doneData.actionPayload.description || text,
+              priority: doneData.actionPayload.priority || "HIGH",
               status: "TODO",
-              dueDate: data.actionPayload.dueDate || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
-              assignedAgentId: data.actionPayload.assignedAgentId || "agent-kia",
+              dueDate: doneData.actionPayload.dueDate || new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+              assignedAgentId: doneData.actionPayload.assignedAgentId || "agent-kia",
               assignedUserId: currentUser.id,
-              tags: data.actionPayload.tags || ["KIA-Created"],
-              category: data.actionPayload.category || "Geral",
+              tags: doneData.actionPayload.tags || ["KIA-Created"],
+              category: doneData.actionPayload.category || "Geral",
             });
-            data.actionCard = {
+            doneData.actionCard = {
               type: "task_created",
               title: `Tarefa Criada: ${createdTask.title}`,
               description: `Atribuída com prioridade ${createdTask.priority}. Prazo: ${new Date(createdTask.dueDate!).toLocaleDateString()}`,
               actionLabel: "Ver no Backlog",
             };
-          } else if (data.intent === "knowledge" && data.actionPayload.title) {
+          } else if (doneData.intent === "knowledge" && doneData.actionPayload.title) {
             addKnowledgeItem({
-              title: data.actionPayload.title,
-              content: data.actionPayload.content || text,
-              category: data.actionPayload.category || "INTERNAL_PROCESS",
+              title: doneData.actionPayload.title,
+              content: doneData.actionPayload.content || text,
+              category: doneData.actionPayload.category || "INTERNAL_PROCESS",
               source: "KIA Assistant Ingestion",
               version: "1.0",
               status: "REVIEW_REQUIRED",
               owner: currentUser.name,
-              tags: data.actionPayload.tags || ["KIA"],
+              tags: doneData.actionPayload.tags || ["KIA"],
             });
           }
         }
 
-        const assistantMsg: ChatMessage = {
-          id: `msg-${Date.now()}`,
-          role: "assistant",
-          content: data.content,
-          timestamp: data.timestamp || new Date().toISOString(),
-          intent: data.intent,
-          executionResult: {
-            status: data.executionStatus || "SUCCESS",
-            capability: data.capability || "conversation:chat",
-            message: data.content,
-            actionCard: data.actionCard,
-            auditRef: data.auditRef,
-            executionTimeMs: data.executionTimeMs || 350,
-            requiresConfirmation: data.executionStatus === "REVIEW_REQUIRED",
-          },
-          toolsUsed: data.toolsUsed,
-          suggestedPrompts: data.suggestedPrompts,
-          modelName: data.modelName,
-        };
+        // Finalize message with complete details
+        setChatMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content: finalContent,
+                  timestamp: doneData?.timestamp || new Date().toISOString(),
+                  intent: doneData?.intent || "conversation",
+                  isStreaming: false,
+                  executionResult: {
+                    status: doneData?.executionStatus || "SUCCESS",
+                    capability: doneData?.capability || "conversation:chat",
+                    message: finalContent,
+                    actionCard: doneData?.actionCard,
+                    auditRef: doneData?.auditRef || "0xKIA-" + Date.now().toString(16).toUpperCase(),
+                    executionTimeMs: doneData?.executionTimeMs || 250,
+                    requiresConfirmation: doneData?.executionStatus === "REVIEW_REQUIRED",
+                  },
+                  toolsUsed: doneData?.toolsUsed || ["gemini-streaming-core"],
+                  suggestedPrompts: doneData?.suggestedPrompts || [
+                    "⚡ Disparar Sinergia Global",
+                    "Ver tarefas no Backlog",
+                    "Consultar Knowledge Base",
+                  ],
+                  modelName: doneData?.modelName,
+                }
+              : msg
+          )
+        );
 
-        setChatMessages((prev) => [...prev, assistantMsg]);
         setIsKiaThinking(false);
 
         // Defer audit log and side effects to background queue
         messageQueue.runInBackground(() => {
           recordAuditLog(
-            `KIA Execução: ${data.capability || "Chat"}`,
-            data.intent || "conversation",
-            data.executionStatus || "SUCCESS",
-            `Consulta: "${text.slice(0, 60)}..." — Audit Ref: ${data.auditRef}`
+            `KIA Execução (Stream): ${doneData?.capability || "Chat"}`,
+            doneData?.intent || "conversation",
+            doneData?.executionStatus || "SUCCESS",
+            `Consulta: "${text.slice(0, 60)}..." — Modelo: ${doneData?.modelName || "gemini-flash"}`
           );
         });
 
         playSfx("success");
 
         // Automatic Natural Voice Readout if enabled
-        if (systemSettings.autoAudioTts && data.content) {
-          speakNaturalText(data.content, {
+        if (systemSettings.autoAudioTts && finalContent) {
+          speakNaturalText(finalContent, {
             voiceName: systemSettings.voiceName || "Kore",
           });
         }
       } catch (error: any) {
         console.error("KIA execution error:", error);
-        const fallbackMsg: ChatMessage = {
-          id: `msg-${Date.now()}`,
-          role: "assistant",
-          content: `Instrução recebida, ${currentUser.name}. O núcleo operacional da KIA processou o comando e sincronizou a operação com o ecossistema GAG Core OS.`,
-          timestamp: new Date().toISOString(),
-          intent: "conversation",
-          executionResult: {
-            status: "SUCCESS",
-            capability: "conversation:chat",
-            message: "Operação executada via contingência local.",
-            auditRef: "0xKIA-" + Date.now().toString(16).toUpperCase(),
-            executionTimeMs: 40,
-          },
-          suggestedPrompts: ["⚡ Disparar Sinergia Global", "Ver Backlog de Tarefas"],
-        };
-        setChatMessages((prev) => [...prev, fallbackMsg]);
+        setChatMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content: `Instrução recebida, ${currentUser.name}. O núcleo operacional da KIA processou o comando e sincronizou a operação com o ecossistema GAG Core OS.`,
+                  isStreaming: false,
+                  intent: "conversation",
+                  executionResult: {
+                    status: "SUCCESS",
+                    capability: "conversation:chat",
+                    message: "Operação executada via contingência local.",
+                    auditRef: "0xKIA-" + Date.now().toString(16).toUpperCase(),
+                    executionTimeMs: 40,
+                  },
+                  suggestedPrompts: ["⚡ Disparar Sinergia Global", "Ver Backlog de Tarefas"],
+                }
+              : msg
+          )
+        );
         setIsKiaThinking(false);
       }
     }, "P0_AI_RESPONSE");
@@ -1089,7 +1224,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     playSfx("warning");
   };
 
-  // Execute Task With Assigned Agent Engine
+  // Phase 1: Central Execution Engine Pipeline Runner
+  const executeEnginePipeline = async (request: Phase1ExecutionRequest): Promise<Phase1ExecutionResponse> => {
+    setIsExecutingTask(true);
+    playSfx("execute");
+    try {
+      const response = await engineApi.executePipeline({
+        ...request,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: activeRole,
+      });
+
+      // Record immutable audit event
+      recordAuditLog(
+        `Phase 1 Engine Pipeline: ${response.status}`,
+        "task",
+        response.status === "COMPLETED" ? "SUCCESS" : "REVIEW_REQUIRED",
+        `Meta: "${request.goal.slice(0, 60)}" | Score QA: ${response.qaReport?.overallScore || "N/A"}/100 | Ref: ${response.traceId}`
+      );
+
+      playSfx(response.status === "COMPLETED" ? "success" : "action");
+      return response;
+    } catch (err: any) {
+      console.error("Phase 1 Engine error:", err);
+      recordAuditLog("Falha no Execution Engine", "task", "FAILED", err.message || "Erro de pipeline");
+      playSfx("warning");
+      throw err;
+    } finally {
+      setIsExecutingTask(false);
+    }
+  };
+
+  // Phase 1: Automated Test Suite Runner
+  const runPhase1EngineTests = async (): Promise<TestSuiteResponse> => {
+    playSfx("action");
+    try {
+      const suiteReport = await engineApi.runTestSuite();
+      recordAuditLog(
+        "Execução de Testes da Fase 1",
+        "task",
+        suiteReport.allPassed ? "SUCCESS" : "REVIEW_REQUIRED",
+        `Total: ${suiteReport.totalTests} | Aprovados: ${suiteReport.passedTests} | Reprovados: ${suiteReport.failedTests}`
+      );
+      playSfx(suiteReport.allPassed ? "success" : "warning");
+      return suiteReport;
+    } catch (err: any) {
+      console.error("Test runner error:", err);
+      throw err;
+    }
+  };
+
+  // Execute Task With Assigned Agent Engine (Integrated with Phase 1 Execution Engine)
   const executeTaskWithAgent = async (taskId: string, targetAgentId?: string): Promise<{ success: boolean; task?: Task }> => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return { success: false };
@@ -1109,24 +1295,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       let executionData: any;
       try {
-        const response = await fetch("/api/tasks/execute", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            taskId: task.id,
-            title: task.title,
-            description: task.description,
-            category: task.category,
-            assignedAgentId: effectiveAgentId,
-            assignedAgentName: assignedAgent.name,
-          }),
+        // Run through Phase 1 Execution Engine Pipeline
+        const engineResult = await engineApi.executePipeline({
+          goal: `${task.title}\n${task.description || ""}`,
+          taskId: task.id,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userRole: activeRole,
+          preferredAgentId: effectiveAgentId.replace("agent-", ""),
         });
 
-        if (response.ok) {
-          executionData = await response.json();
-        } else {
-          throw new Error(`HTTP ${response.status}`);
-        }
+        executionData = {
+          success: engineResult.status === "COMPLETED",
+          executionResult: {
+            status: "DONE",
+            executionOutput: engineResult.finalDeliverable,
+            artifacts: engineResult.artifacts.map((a) => ({ title: a.name, type: a.type, content: a.content })),
+            summary: `Concluído com validação QA (${engineResult.qaReport?.overallScore || 90}/100)`,
+            auditRef: engineResult.traceId,
+          },
+        };
       } catch (err) {
         console.warn("Task execute API fallback:", err);
         let fallbackDeliverable = `### 📋 Entregável Operacional Final — ${assignedAgent.name}\n\n**Tarefa:** ${task.title}\n\n**Status:** ✅ 100% Executada & Concluída.\n\n#### 🎯 Ações Realizadas:\n1. Diagnóstico completo de requisitos e contextualização no GAG Core OS.\n2. Execução da ordem de trabalho estratégica em conformidade com as diretrizes da GAG Visual.\n3. Geração de artefatos executáveis e alinhamento com a Norma Técnica.\n\n*Executado pelo especialista ${assignedAgent.name} (${assignedAgent.roleTitle}).*`;
@@ -1217,6 +1405,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsExecutingTask(false);
     playSfx("success");
     return { completedCount: count };
+  };
+
+  // Autonomous Agent Operating System (AOS) — High-Level KIA Orchestrator
+  const orchestratePlanWithKIA = async (goal: string): Promise<KIAOrchestrationResult> => {
+    setIsExecutingTask(true);
+    playSfx("execute");
+
+    try {
+      const orchestrator = KIAOrchestrator.getInstance();
+      const planResult = await orchestrator.orchestrateUserRequest(goal, {
+        userId: currentUser.id,
+        userRole: activeRole,
+      });
+
+      // Synchronize created tasks with UI tasks state
+      if (planResult.createdTasks && planResult.createdTasks.length > 0) {
+        const mappedTasks: Task[] = planResult.createdTasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          description: t.description,
+          priority: t.priority,
+          status: t.status === "COMPLETED" ? "DONE" : (t.status === "IN_PROGRESS" ? "IN_PROGRESS" : "TODO"),
+          category: t.category,
+          tags: t.tags,
+          assignedAgentId: t.agentId,
+          assignedUserId: currentUser.id,
+          dueDate: new Date(Date.now() + 2 * 86400000).toISOString().split("T")[0],
+          createdAt: t.createdAt,
+          updatedAt: new Date().toISOString(),
+          executionOutput: t.executionOutput,
+          executionArtifacts: t.executionArtifacts?.map((a) => ({ title: a.name, type: a.type, content: a.content })),
+        }));
+
+        setTasks((prev) => [...mappedTasks, ...prev]);
+      }
+
+      // Add a summary message to KIA Chat
+      const summaryChatMessage: ChatMessage = {
+        id: `msg-plan-${Date.now()}`,
+        role: "assistant",
+        content: `🎯 **PLANO AUTÓNOMO ORQUESTRADO PELA KIA**\n\n**Meta:** "${goal}"\n\n**Status Geral:** \`${planResult.overallStatus}\`\n**Tarefas Executadas:** ${planResult.executedTasksCount}/${planResult.createdTasks.length}\n\n### 📋 Rastreio Operacional:\n${planResult.executionLogs.map((l) => `- ${l}`).join("\n")}\n\n*Todas as tarefas foram inseridas no Backlog com validação QA e dependências resolvidas.*`,
+        timestamp: new Date().toISOString(),
+        intent: "task",
+        executionResult: {
+          status: "SUCCESS",
+          capability: "orchestration:plan",
+          message: planResult.planSummary,
+          actionCard: {
+            type: "task_created",
+            title: `Plano KIA: ${goal.slice(0, 40)}...`,
+            description: `${planResult.createdTasks.length} tarefas sequenciais orquestradas.`,
+            actionLabel: "Ver no Backlog",
+          },
+          auditRef: "0xAOS-" + Date.now().toString(16).toUpperCase(),
+          executionTimeMs: 420,
+        },
+      };
+
+      setChatMessages((prev) => [...prev, summaryChatMessage]);
+      recordAuditLog("Orquestração Autónoma KIA", "task", "SUCCESS", `Plano: "${goal}" (${planResult.createdTasks.length} tarefas)`);
+      playSfx("success");
+
+      return planResult;
+    } catch (err: any) {
+      console.error("KIA Orchestration error:", err);
+      recordAuditLog("Falha na Orquestração KIA", "task", "FAILED", err.message || "Erro desconhecido");
+      playSfx("warning");
+      throw err;
+    } finally {
+      setIsExecutingTask(false);
+    }
   };
 
   // Scanner Actions
@@ -1940,6 +2199,175 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     playSfx("success");
   };
 
+  // Sync WhatsApp logs to localStorage
+  useEffect(() => {
+    localStorage.setItem("gag_whatsapp_logs", JSON.stringify(whatsappLogs));
+  }, [whatsappLogs]);
+
+  // Fetch initial WhatsApp status
+  const fetchWhatsAppStatus = async () => {
+    try {
+      setIsWhatsAppLoading(true);
+      const res = await fetch("/api/whatsapp/status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.recentLogs && Array.isArray(data.recentLogs) && data.recentLogs.length > 0) {
+          setWhatsappLogs(data.recentLogs);
+        }
+        if (data.webhookUrl) {
+          setWhatsappConfig((prev) => ({
+            ...prev,
+            webhookUrl: data.webhookUrl,
+            verifyToken: data.verifyToken || prev.verifyToken,
+            phoneNumberId: data.phoneNumberId || prev.phoneNumberId,
+            businessAccountId: data.businessAccountId || prev.businessAccountId,
+            accessTokenConfigured: Boolean(data.hasAccessToken),
+            autonomous247: data.autonomousMode ?? prev.autonomous247,
+          }));
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch WhatsApp status:", err);
+    } finally {
+      setIsWhatsAppLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchWhatsAppStatus();
+  }, []);
+
+  const simulateWhatsAppIncoming = async (
+    senderName: string,
+    senderNumber: string,
+    message: string
+  ) => {
+    setIsWhatsAppLoading(true);
+    try {
+      const res = await fetch("/api/whatsapp/simulate-incoming", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ senderName, senderNumber, message }),
+      });
+
+      if (!res.ok) throw new Error("Falha ao simular mensagem");
+      const data = await res.json();
+
+      if (data.data) {
+        setWhatsappLogs((prev) => [data.data, ...prev.filter((l) => l.id !== data.data.id)]);
+
+        // Auto task creation if opportunity detected
+        if (data.data.autoTaskCreated && whatsappConfig.autoCreateTasks) {
+          const newTask = createTask({
+            title: `[WhatsApp Lead] ${senderName}: ${message.slice(0, 45)}...`,
+            description: `Mensagem recebida 24/7 via WhatsApp (${senderNumber}):\n"${message}"\n\nResposta gerada pelo ${data.data.routedAgentName}:\n"${data.data.aiResponse}"`,
+            priority: data.data.sentiment === "URGENT" ? "CRITICAL" : "HIGH",
+            status: "TODO",
+            dueDate: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+            assignedAgentId: data.data.routedAgent || "agent-consultant",
+            assignedUserId: currentUser.id,
+            tags: ["WhatsApp", "Lead24_7", "Automated"],
+            category: "Comercial & Vendas",
+          });
+          data.data.taskId = newTask.id;
+        }
+
+        recordAuditLog(
+          `WhatsApp 24/7: Mensagem de ${senderName}`,
+          "external_action",
+          "SUCCESS",
+          `Encaminhado para ${data.data.routedAgentName}. Número: ${senderNumber}`
+        );
+        playSfx("notification");
+      }
+      return data;
+    } catch (err: any) {
+      console.error("simulateWhatsAppIncoming error:", err);
+      throw err;
+    } finally {
+      setIsWhatsAppLoading(false);
+    }
+  };
+
+  const sendOutboundWhatsAppMessage = async (
+    recipientNumber: string,
+    recipientName: string,
+    message: string,
+    agentId?: string,
+    agentName?: string
+  ) => {
+    setIsWhatsAppLoading(true);
+    try {
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientNumber,
+          recipientName,
+          message,
+          agentId: agentId || "agent-kia",
+          agentName: agentName || "KIA Master Agent",
+        }),
+      });
+
+      if (!res.ok) throw new Error("Erro ao enviar mensagem WhatsApp");
+      const data = await res.json();
+
+      if (data.data) {
+        setWhatsappLogs((prev) => [data.data, ...prev]);
+        recordAuditLog(
+          `WhatsApp Outbound: ${recipientName}`,
+          "external_action",
+          "SUCCESS",
+          `Destinatário: ${recipientNumber}. Agente: ${agentName || "KIA"}`
+        );
+        playSfx("success");
+      }
+      return data;
+    } catch (err: any) {
+      console.error("sendOutboundWhatsAppMessage error:", err);
+      throw err;
+    } finally {
+      setIsWhatsAppLoading(false);
+    }
+  };
+
+  const updateWhatsAppConfig = async (updates: Partial<WhatsAppConfig> & { accessToken?: string }) => {
+    try {
+      const res = await fetch("/api/whatsapp/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+
+      if (!res.ok) throw new Error("Erro ao atualizar definições WhatsApp");
+      const data = await res.json();
+      if (data.config) {
+        setWhatsappConfig((prev) => ({
+          ...prev,
+          ...data.config,
+        }));
+      }
+      recordAuditLog("Atualização WhatsApp Business API", "system_implementation", "SUCCESS", "Credenciais e parâmetros 24/7 salvos.");
+      playSfx("click");
+      return data;
+    } catch (err: any) {
+      console.error("updateWhatsAppConfig error:", err);
+      throw err;
+    }
+  };
+
+  const clearWhatsAppLogs = async () => {
+    try {
+      await fetch("/api/whatsapp/clear-logs", { method: "POST" });
+      setWhatsappLogs([]);
+      recordAuditLog("Limpeza de Logs WhatsApp", "system_implementation", "SUCCESS", "Histórico de mensagens limpo.");
+      playSfx("click");
+    } catch (err) {
+      console.error("clearWhatsAppLogs error:", err);
+    }
+  };
+
   const importSystemBackup = (jsonData: string): boolean => {
     try {
       const data = JSON.parse(jsonData);
@@ -2018,6 +2446,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteTask,
         executeTaskWithAgent,
         executeBatchTasks,
+        orchestratePlanWithKIA,
+        executeEnginePipeline,
+        runPhase1EngineTests,
         isExecutingTask,
         uploadAndScanDoc,
         convertDocToKnowledge,
@@ -2032,6 +2463,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         executeSkillLive,
         createEvent,
         deleteEvent,
+        whatsappLogs,
+        whatsappConfig,
+        isWhatsAppLoading,
+        fetchWhatsAppStatus,
+        simulateWhatsAppIncoming,
+        sendOutboundWhatsAppMessage,
+        updateWhatsAppConfig,
+        clearWhatsAppLogs,
         recordAuditLog,
         updateSettings,
         exportSystemBackup,

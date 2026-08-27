@@ -16,14 +16,41 @@ export function getAudioContext(): AudioContext {
 }
 
 export function playSfx(
-  type: "success" | "action" | "click" | "notification" | "warning" | "execute",
+  type: "success" | "action" | "click" | "notification" | "warning" | "execute" | "wake_activation",
   volume = 0.3
 ) {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
 
-    if (type === "click") {
+    if (type === "wake_activation") {
+      // Futuristic two-tone rising chime (Jarvis / Alexa style)
+      const osc1 = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc1.type = "sine";
+      osc2.type = "sine";
+
+      osc1.frequency.setValueAtTime(587.33, now); // D5
+      osc1.frequency.exponentialRampToValueAtTime(880.0, now + 0.12); // A5
+
+      osc2.frequency.setValueAtTime(880.0, now + 0.08); // A5
+      osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.22); // D6
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(volume * 0.35, now + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc1.start(now);
+      osc2.start(now + 0.08);
+      osc1.stop(now + 0.2);
+      osc2.stop(now + 0.35);
+    } else if (type === "click") {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
@@ -153,17 +180,18 @@ export function sanitizeForVoice(text: string): string {
     .trim();
 }
 
-// Natural voice output with dual-engine fallback (Gemini 3.1 TTS + Web Speech API)
+// Natural voice output with dual-engine fallback (Instant Browser SpeechSynthesis vs Gemini Neural Studio TTS)
 export async function speakNaturalText(
   text: string,
   options: {
     voiceName?: string;
+    engine?: "instant_browser" | "gemini_studio" | "auto";
     onStart?: () => void;
     onEnd?: () => void;
     onError?: (err: any) => void;
   } = {}
 ): Promise<void> {
-  const { voiceName = "Kore", onStart, onEnd, onError } = options;
+  const { voiceName = "Kore", engine = "instant_browser", onStart, onEnd, onError } = options;
   const clean = sanitizeForVoice(text);
   if (!clean) {
     onEnd?.();
@@ -174,11 +202,73 @@ export async function speakNaturalText(
   isCurrentlySpeaking = true;
   onStart?.();
 
-  // Extract a readable portion (up to 400 chars) for responsive conversational feel
+  // Extract a readable portion (up to 480 chars) for responsive conversational feel
   const voiceSnippet = clean.length > 500 ? clean.slice(0, 480) + "..." : clean;
 
+  // 1. Instant Browser SpeechSynthesis (0ms latency, starts speaking immediately without network wait)
+  if (engine === "instant_browser" || engine === "auto") {
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(voiceSnippet);
+        utterance.lang = voiceName === "Aoede" || voiceName === "Fenrir" ? "pt-PT" : "pt-PT";
+        utterance.rate = 1.08;
+        utterance.pitch = 1.0;
+
+        const selectAndSpeak = () => {
+          const voices = window.speechSynthesis.getVoices();
+          const ptVoice = voices.find(
+            (v) =>
+              v.lang.startsWith("pt") ||
+              v.name.toLowerCase().includes("portuguese") ||
+              v.name.toLowerCase().includes("maria") ||
+              v.name.toLowerCase().includes("joana") ||
+              v.name.toLowerCase().includes("helena") ||
+              v.name.toLowerCase().includes("luciana")
+          );
+          if (ptVoice) {
+            utterance.voice = ptVoice;
+          }
+
+          utterance.onend = () => {
+            isCurrentlySpeaking = false;
+            onEnd?.();
+          };
+          utterance.onerror = (e) => {
+            isCurrentlySpeaking = false;
+            onError?.(e);
+            onEnd?.();
+          };
+
+          window.speechSynthesis.speak(utterance);
+        };
+
+        if (window.speechSynthesis.getVoices().length > 0) {
+          selectAndSpeak();
+          return;
+        } else {
+          window.speechSynthesis.onvoiceschanged = () => {
+            selectAndSpeak();
+          };
+          // In case voiceschanged doesn't trigger immediately:
+          setTimeout(() => {
+            if (isCurrentlySpeaking && !window.speechSynthesis.speaking) {
+              selectAndSpeak();
+            }
+          }, 50);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Browser SpeechSynthesis fallback triggered:", err);
+    }
+  }
+
+  // 2. Gemini Neural Studio TTS endpoint (High-fidelity 24kHz audio)
   try {
-    // 1. Try Gemini Neural TTS endpoint
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -186,7 +276,9 @@ export async function speakNaturalText(
         text: voiceSnippet,
         voiceName,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     if (res.ok) {
       const data = await res.json();
@@ -198,27 +290,16 @@ export async function speakNaturalText(
       }
     }
   } catch (err) {
-    console.warn("Primary TTS unavailable, switching to browser synthesis:", err);
+    console.warn("Gemini Studio TTS unavailable, falling back to instant browser speech:", err);
   }
 
-  // 2. Fallback to Browser SpeechSynthesis (offline, instantaneous)
+  // 3. Ultimate Fallback to Browser SpeechSynthesis
   try {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(voiceSnippet);
       utterance.lang = "pt-PT";
       utterance.rate = 1.05;
-      utterance.pitch = 1.0;
-
-      // Select Portuguese voice if available
-      const voices = window.speechSynthesis.getVoices();
-      const ptVoice = voices.find(
-        (v) => v.lang.startsWith("pt") || v.name.toLowerCase().includes("portuguese") || v.name.toLowerCase().includes("maria") || v.name.toLowerCase().includes("joana")
-      );
-      if (ptVoice) {
-        utterance.voice = ptVoice;
-      }
-
       utterance.onend = () => {
         isCurrentlySpeaking = false;
         onEnd?.();
@@ -228,12 +309,11 @@ export async function speakNaturalText(
         onError?.(e);
         onEnd?.();
       };
-
       window.speechSynthesis.speak(utterance);
       return;
     }
   } catch (err) {
-    console.error("SpeechSynthesis error:", err);
+    console.error("All voice engines failed:", err);
     onError?.(err);
   }
 

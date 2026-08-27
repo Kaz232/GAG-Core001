@@ -65,6 +65,7 @@ export interface ChatMessage {
   toolsUsed?: string[];
   suggestedPrompts?: string[];
   modelName?: string;
+  isStreaming?: boolean;
 }
 
 export type KnowledgeStatus = "DRAFT" | "REVIEW_REQUIRED" | "APPROVED" | "ARCHIVED";
@@ -369,6 +370,13 @@ export interface SystemSettings {
   autoAudioTts: boolean;
   voiceName?: "Kore" | "Aoede" | "Fenrir" | "Puck" | "Zephyr" | string;
   voiceContinuous?: boolean;
+  voiceVadEnabled?: boolean;
+  voiceEngine?: "instant_browser" | "gemini_studio" | "auto";
+  voiceSilenceDelayMs?: number;
+  wakeWordEnabled?: boolean;
+  wakeWordTriggerPhrase?: string;
+  wakeWordSoundFeedback?: boolean;
+  wakeWordAutoSubmitCommand?: boolean;
 }
 
 export interface AuthSession {
@@ -378,9 +386,59 @@ export interface AuthSession {
   provider: "supabase" | "local_os";
 }
 
+export interface SystemIncident {
+  id: string;
+  timestamp: string;
+  errorSignature: string;
+  category: "AI_TIMEOUT" | "MODEL_UNAVAILABLE" | "NETWORK" | "PAYLOAD_INVALID" | "PERMISSION" | "UNKNOWN";
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  errorMessage: string;
+  affectedComponent: string;
+  modelAttempted?: string;
+  resolutionStatus: "AUTO_RESOLVED" | "HEALED_WITH_FALLBACK" | "LOGGED_IMMUTABLE" | "PREVENTED";
+  resolutionActionTaken: string;
+  preventionRuleApplied?: string;
+  hash: string;
+  occurrenceCount: number;
+  lastResolvedAt: string;
+}
+
+export interface WhatsAppMessageLog {
+  id: string;
+  senderNumber: string;
+  senderName: string;
+  message: string;
+  receivedAt: string;
+  routedAgent: string;
+  routedAgentName: string;
+  aiResponse: string;
+  status: "REPLIED_24_7" | "PENDING" | "HUMAN_TAKEOVER" | "FAILED" | "SENT_OUTBOUND";
+  channel: string;
+  isOutbound?: boolean;
+  sentiment?: "POSITIVE" | "NEUTRAL" | "URGENT" | "OPPORTUNITY";
+  autoTaskCreated?: boolean;
+  taskId?: string;
+}
+
+export interface WhatsAppConfig {
+  phoneNumberId: string;
+  businessAccountId: string;
+  verifyToken: string;
+  accessTokenConfigured: boolean;
+  webhookUrl: string;
+  autonomous247: boolean;
+  autoCreateTasks: boolean;
+  autoCaptureLeads: boolean;
+  businessHoursOnly: boolean;
+  defaultAgent: string;
+  welcomeMessage?: string;
+  emergencyPhoneAlert?: string;
+}
+
 export type NavigationTab =
   | "dashboard"
   | "kia"
+  | "whatsapp"
   | "knowledge"
   | "scanner"
   | "tasks"
@@ -390,4 +448,5 @@ export type NavigationTab =
   | "skills"
   | "agent_factory"
   | "audit"
+  | "incidents"
   | "settings";
