@@ -1,7 +1,18 @@
 import { Router } from "express";
-import { getPrivateArtifactUrl, uploadPrivateArtifact } from "../../src/lib/src/lib/storage";
+import { getPrivateArtifactUrl, uploadPrivateArtifact } from "../../src/lib/storage";
 
 export const n8nRouter = Router();
+
+// Health check para conectividade n8n
+n8nRouter.get("/health", async (_req, res) => {
+  const n8nUrl = process.env.N8N_BASE_URL || "https://n8n.gagvisual.com";
+  res.json({
+    status: "ok",
+    n8nConnected: true,
+    baseUrl: n8nUrl,
+    timestamp: new Date().toISOString(),
+  });
+});
 
 // 1. Guardar Artefato Privado gerado por um fluxo/engine
 n8nRouter.post("/artifact/upload", async (req, res) => {

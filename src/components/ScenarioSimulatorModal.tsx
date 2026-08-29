@@ -30,9 +30,9 @@ export const ScenarioSimulatorModal: React.FC<ScenarioSimulatorModalProps> = ({
   const { simulateScenario, createTask, setActiveTab, playSfx, currentUser } = useApp();
 
   const [campaignName, setCampaignName] = useState("Lançamento Q4 IA Luanda & Lisboa");
-  const [monthlyBudgetAOA, setMonthlyBudgetAOA] = useState(3000000); // 3M AOA
-  const [averageTicketAOA, setAverageTicketAOA] = useState(150000); // 150k AOA
-  const [targetCPA_AOA, setTargetCPA_AOA] = useState(18000); // 18k AOA
+  const [monthlyBudgetAOA, setMonthlyBudgetAOA] = useState(150000); // 150k AOA default (acessível)
+  const [averageTicketAOA, setAverageTicketAOA] = useState(25000); // 25k AOA
+  const [targetCPA_AOA, setTargetCPA_AOA] = useState(5000); // 5k AOA
   const [conversionRate, setConversionRate] = useState(2.8); // 2.8%
   const [trafficChannel, setTrafficChannel] = useState<ScenarioSimulation["trafficChannel"]>("Meta Ads");
   
@@ -152,52 +152,133 @@ export const ScenarioSimulatorModal: React.FC<ScenarioSimulatorModalProps> = ({
               </select>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[11px]">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px]">
                 <span className="font-bold text-slate-300 uppercase tracking-wider">Orçamento Mensal</span>
-                <span className="text-cyan-400 font-bold">{formatKz(monthlyBudgetAOA)}</span>
+                <div className="flex items-center space-x-1">
+                  <input
+                    type="number"
+                    min={10000}
+                    max={50000000}
+                    step={5000}
+                    value={monthlyBudgetAOA}
+                    onChange={(e) => setMonthlyBudgetAOA(Math.max(10000, Number(e.target.value) || 10000))}
+                    className="w-24 bg-slate-950 border border-slate-800 focus:border-cyan-500/60 rounded-lg px-2 py-0.5 text-right text-xs font-bold text-cyan-400 focus:outline-none"
+                  />
+                  <span className="text-cyan-400 font-bold text-xs">Kz</span>
+                </div>
               </div>
               <input
                 type="range"
-                min={500000}
-                max={25000000}
-                step={250000}
+                min={10000}
+                max={10000000}
+                step={10000}
                 value={monthlyBudgetAOA}
                 onChange={(e) => setMonthlyBudgetAOA(Number(e.target.value))}
-                className="w-full accent-cyan-400"
+                className="w-full accent-cyan-400 cursor-pointer"
               />
+              <div className="flex flex-wrap gap-1 pt-1">
+                {[25000, 50000, 100000, 250000, 500000, 1500000, 5000000].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setMonthlyBudgetAOA(val)}
+                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono transition-all ${
+                      monthlyBudgetAOA === val
+                        ? "bg-cyan-400 text-black font-bold"
+                        : "bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800"
+                    }`}
+                  >
+                    {val >= 1000000 ? `${val / 1000000}M` : `${val / 1000}k`} Kz
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[11px]">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px]">
                 <span className="font-bold text-slate-300 uppercase tracking-wider">Ticket Médio</span>
-                <span className="text-cyan-400 font-bold">{formatKz(averageTicketAOA)}</span>
+                <div className="flex items-center space-x-1">
+                  <input
+                    type="number"
+                    min={1000}
+                    max={5000000}
+                    step={1000}
+                    value={averageTicketAOA}
+                    onChange={(e) => setAverageTicketAOA(Math.max(1000, Number(e.target.value) || 1000))}
+                    className="w-24 bg-slate-950 border border-slate-800 focus:border-cyan-500/60 rounded-lg px-2 py-0.5 text-right text-xs font-bold text-cyan-400 focus:outline-none"
+                  />
+                  <span className="text-cyan-400 font-bold text-xs">Kz</span>
+                </div>
               </div>
               <input
                 type="range"
-                min={20000}
-                max={2000000}
-                step={20000}
+                min={1000}
+                max={1000000}
+                step={5000}
                 value={averageTicketAOA}
                 onChange={(e) => setAverageTicketAOA(Number(e.target.value))}
-                className="w-full accent-cyan-400"
+                className="w-full accent-cyan-400 cursor-pointer"
               />
+              <div className="flex flex-wrap gap-1 pt-1">
+                {[5000, 15000, 25000, 50000, 100000, 250000].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setAverageTicketAOA(val)}
+                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono transition-all ${
+                      averageTicketAOA === val
+                        ? "bg-cyan-400 text-black font-bold"
+                        : "bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800"
+                    }`}
+                  >
+                    {val >= 1000000 ? `${val / 1000000}M` : `${val / 1000}k`} Kz
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[11px]">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[11px]">
                 <span className="font-bold text-slate-300 uppercase tracking-wider">CPA Alvo Estimado</span>
-                <span className="text-cyan-400 font-bold">{formatKz(targetCPA_AOA)}</span>
+                <div className="flex items-center space-x-1">
+                  <input
+                    type="number"
+                    min={500}
+                    max={200000}
+                    step={500}
+                    value={targetCPA_AOA}
+                    onChange={(e) => setTargetCPA_AOA(Math.max(500, Number(e.target.value) || 500))}
+                    className="w-24 bg-slate-950 border border-slate-800 focus:border-cyan-500/60 rounded-lg px-2 py-0.5 text-right text-xs font-bold text-cyan-400 focus:outline-none"
+                  />
+                  <span className="text-cyan-400 font-bold text-xs">Kz</span>
+                </div>
               </div>
               <input
                 type="range"
-                min={3000}
-                max={100000}
-                step={2000}
+                min={500}
+                max={50000}
+                step={500}
                 value={targetCPA_AOA}
                 onChange={(e) => setTargetCPA_AOA(Number(e.target.value))}
-                className="w-full accent-cyan-400"
+                className="w-full accent-cyan-400 cursor-pointer"
               />
+              <div className="flex flex-wrap gap-1 pt-1">
+                {[1000, 2500, 5000, 10000, 20000, 35000].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setTargetCPA_AOA(val)}
+                    className={`text-[9px] px-1.5 py-0.5 rounded-md font-mono transition-all ${
+                      targetCPA_AOA === val
+                        ? "bg-cyan-400 text-black font-bold"
+                        : "bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800"
+                    }`}
+                  >
+                    {val / 1000}k Kz
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

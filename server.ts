@@ -37,6 +37,22 @@ function getGenAI(): GoogleGenAI {
 }
 
 // Resilient generation with automatic fallback & low-latency execution timeout
+function sanitizeModelName(modelName?: string): string {
+  if (!modelName) return "gemini-3.7-flash";
+  const m = modelName.trim().toLowerCase();
+  if (
+    m.includes("1.5") ||
+    m.includes("3.1-pro") ||
+    m.includes("2.5-pro") ||
+    m.includes("2.0") ||
+    m === "gemini-pro" ||
+    m === "gemini-ultra"
+  ) {
+    return "gemini-3.7-flash";
+  }
+  return modelName;
+}
+
 async function generateWithFallback(
   ai: GoogleGenAI,
   primaryModel: string,
@@ -48,13 +64,12 @@ async function generateWithFallback(
     throw new Error("GEMINI_API_KEY_UNCONFIGURED");
   }
 
-  // Modern high-availability models prioritized for real-time responsiveness
+  // Modern high-availability models prioritized for real-time responsiveness without 0-quota limits
+  const sanitizedPrimary = sanitizeModelName(primaryModel);
   const candidateModels = [
-    primaryModel || "gemini-2.5-flash",
-    "gemini-2.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-pro",
+    sanitizedPrimary,
     "gemini-3.7-flash",
+    "gemini-3.1-flash-lite",
   ];
   const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
 
@@ -213,7 +228,7 @@ app.get("/api/health", (_req, res) => {
     version: "2.4.0",
     time: new Date().toISOString(),
     aiProvider: process.env.AI_PROVIDER || "gemini",
-    aiModel: process.env.AI_MODEL || "gemini-2.5-flash",
+    aiModel: process.env.AI_MODEL || "gemini-3.7-flash",
     hasApiKey: !!process.env.GEMINI_API_KEY,
     supabaseConfigured: !!(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY),
   });
@@ -243,12 +258,16 @@ app.post("/api/kia/stream", async (req, res) => {
 
   const startTime = Date.now();
   let fullAccumulatedText = "";
-  let usedModelName = "gemini-2.5-flash";
+  let usedModelName = "gemini-3.7-flash";
   const attemptedModelErrors: { model: string; error: string; timeMs: number }[] = [];
 
-  const systemInstruction = `Tu és a KIA (Knowledge Intelligent Agent), a inteligência-mestre e coordenadora da GAG Visual (Luanda/Angola).
-Responde de forma executiva, objetiva, natural, concisa e sem demoras em português.
-Não termines automaticamente as tuas respostas com perguntas clichê como 'Desejas que eu...', 'Preferes que...', 'Posso continuar...' ou 'O que desejas fazer?'. Só deves fazer perguntas se alguma informação indispensável estiver estritamente em falta para concluir a ação.`;
+  const systemInstruction = `[DIRETRIZ SUPREMA DO GAG CORE OS - RESPOSTA DIRETA & FACTICIDADE]
+Tu és a KIA (Knowledge Intelligent Agent), Assistente Central, Gestora do Sistema e Orquestradora da GAG Visual (Luanda/Angola).
+1. RESPOSTA DIRETA: Inicia a tua resposta IMEDIATAMENTE com o conteúdo principal ou ação executada na PRIMEIRA FRASE. NUNCA uses introduções, cumprimentos, saudações redundantes ou rodeios (ex: PROIBIDO 'Olá', 'Como posso ajudar?', 'Com certeza!', 'Aqui está a resposta:').
+2. FORMATAÇÃO VISUAL: Dá prioridade a tabelas Markdown e listas com bullet points.
+3. CONTEXTO LOCAL: Moeda padrão em Kwanzas (AOA) e USD quando aplicável. Linguagem técnica executiva em Português de Angola.
+4. FACTICIDADE: NUNCA inventes dados financeiros, métricas ou URLs. Caso faltem dados, solicita clarificação de forma direta.
+5. SEM CLICHÊS: Não termines com perguntas clichê como 'Desejas que eu...', 'Posso continuar?' ou 'O que desejas fazer?'.`;
 
   const conversationContext = `Utilizador: ${userName} (${userRole})
 Histórico recente:
@@ -258,11 +277,9 @@ Mensagem: ${message}`;
   try {
     const ai = getGenAI();
     const candidateModels = [
-      process.env.AI_MODEL || "gemini-2.5-flash",
-      "gemini-2.5-flash",
-      "gemini-3.1-flash-lite",
-      "gemini-2.5-pro",
+      sanitizeModelName(process.env.AI_MODEL),
       "gemini-3.7-flash",
+      "gemini-3.1-flash-lite",
     ];
     const uniqueModels = Array.from(new Set(candidateModels.filter(Boolean)));
     let streamSuccess = false;
@@ -569,13 +586,16 @@ app.post("/api/kia/chat", async (req, res) => {
     const ai = getGenAI();
     const startTime = Date.now();
 
-    // Streamlined system instruction for instant response generation (<1s)
-    const systemInstruction = `Tu és a KIA (Knowledge Intelligent Agent), a inteligência-mestre e coordenadora da GAG Visual (Luanda/Angola).
-Responde de forma executiva, objetiva, natural, concisa e sem demoras em português.
-Não termines automaticamente as tuas respostas com perguntas clichê como 'Desejas que eu...', 'Preferes que...', 'Posso continuar...' ou 'O que desejas fazer?'. Só pergunta se faltar informação estritamente indispensável.
-Retorna SEMPRE um JSON rigoroso:
+    // Streamlined system instruction with GAG Global Standards
+    const systemInstruction = `[DIRETRIZ SUPREMA DO GAG CORE OS - RESPOSTA DIRETA & FACTICIDADE]
+Tu és a KIA (Knowledge Intelligent Agent), Assistente Central, Gestora do Sistema e Orquestradora da GAG Visual (Luanda/Angola).
+1. RESPOSTA DIRETA: No campo 'content', inicia a resposta IMEDIATAMENTE com o resultado, confirmação da ação ou informação solicitada na primeira frase. NUNCA uses 'Olá', 'Como posso ajudar?', 'Com certeza!' ou introduções redundantes.
+2. FORMATAÇÃO VISUAL: Dá prioridade a tabelas Markdown e bullet points claros no 'content'.
+3. CONTEXTO LOCAL: Moeda padrão em Kwanzas (AOA) e USD quando aplicável.
+4. FACTICIDADE: NUNCA inventes dados financeiros, métricas ou URLs.
+5. Retorna SEMPRE um JSON rigoroso:
 {
-  "content": "Resposta executiva, clara e rápida da KIA",
+  "content": "Conteúdo principal direto, claro e estruturado sem saudações redundantes.",
   "intent": "conversation | task | knowledge | document | agent_factory | internal_tool",
   "capability": "task:create | knowledge:search | conversation:chat | agent_orchestration",
   "executionStatus": "SUCCESS",
@@ -596,7 +616,7 @@ Mensagem: ${message}`;
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       conversationContext,
       {
         systemInstruction,
@@ -844,7 +864,7 @@ O cliente ${senderName} (${senderNumber}) enviou a mensagem: "${incomingText}".
 Fornece uma resposta de WhatsApp acolhedora, executiva, calorosa e assertiva, no tom premium da GAG Visual (valores em Kwanzas AOA se aplicável). Máximo 2 a 3 frases.`;
 
       const result = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.7-flash",
         contents: prompt,
       });
       aiResponse = result.text?.trim() || "Olá! Recebemos a sua mensagem na GAG Visual. O nosso especialista entrará em contacto imediato.";
@@ -964,7 +984,7 @@ app.post("/api/whatsapp/simulate-incoming", async (req, res) => {
     const ai = getGenAI();
     const prompt = `És o ${agentName} da GAG Visual (Luanda/Angola). O cliente ${senderName} enviou via WhatsApp: "${message}". Dá uma resposta direta, calorosa, executiva e comercial para WhatsApp (máximo 2 a 3 frases).`;
     const gen = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.7-flash",
       contents: prompt,
     });
     aiResponse = gen.text?.trim() || `Olá ${senderName}! Obrigado pelo contacto com a GAG Visual. Estamos prontos para acelerar o seu negócio.`;
@@ -1122,7 +1142,7 @@ Responde ESTRITAMENTE em JSON correspondendo ao seguinte schema:
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       contents,
       {
         responseMimeType: "application/json",
@@ -1183,7 +1203,7 @@ Responde estritamente em formato JSON com a propriedade "output" contendo os res
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       prompt,
       {
         responseMimeType: "application/json",
@@ -1404,7 +1424,7 @@ app.post("/api/audio/transcribe", async (req, res) => {
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       contents,
       {
         temperature: 0.1,
@@ -1433,7 +1453,7 @@ app.post("/api/search/grounded", async (req, res) => {
 
     const ai = getGenAI();
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.7-flash",
       contents: `Pesquisa e resume com dados em tempo real do Google Search: ${query}`,
       config: {
         tools: [{ googleSearch: {} }],
@@ -1450,7 +1470,7 @@ app.post("/api/search/grounded", async (req, res) => {
       text,
       groundingChunks: searchChunks,
       webSearchQueries,
-      model: "gemini-2.5-flash",
+      model: "gemini-3.7-flash",
     });
   } catch (error: any) {
     console.error("Search Grounding Error:", error);
@@ -1546,7 +1566,7 @@ Responde ESTRITAMENTE em formato JSON com o seguinte schema:
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       prompt,
       {
         responseMimeType: "application/json",
@@ -1687,7 +1707,7 @@ Responde ESTRITAMENTE em JSON correspondente ao seguinte schema:
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       prompt,
       {
         responseMimeType: "application/json",
@@ -1816,7 +1836,7 @@ Responde ESTRITAMENTE em JSON:
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       prompt,
       {
         responseMimeType: "application/json",
@@ -1934,7 +1954,7 @@ Responde ESTRITAMENTE em JSON correspondente ao seguinte schema:
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       prompt,
       {
         responseMimeType: "application/json",
@@ -2037,19 +2057,25 @@ app.post("/api/tasks/execute", async (req, res) => {
     const { taskId, title, description, category = "Geral", assignedAgentId = "agent-kia", assignedAgentName = "Agente Especialista" } = req.body;
     const ai = getGenAI();
 
-    const prompt = `Atua como o especialista "${assignedAgentName}" (ID: ${assignedAgentId}) da GAG Visual.
+    const prompt = `[DIRETRIZ SUPREMA DO GAG CORE OS - RESPOSTA DIRETA & FACTICIDADE]
+1. RESPOSTA DIRETA: O conteúdo no 'executionOutput' DEVE iniciar IMEDIATAMENTE com o resultado, análise, tabela ou entrega final na primeira linha. PROIBIDO usar saudações, introduções ou frases de cortesia como "Olá", "Aqui está a entrega", "Com certeza!".
+2. FORMATAÇÃO VISUAL: Estrutura a entrega em tabelas Markdown e listas estruturadas com bullet points.
+3. CONTEXTO LOCAL: Valores em Kwanzas (AOA) e USD quando aplicável.
+4. FACTICIDADE: NUNCA inventes dados financeiros ou métricas fictícias.
+
+Atua como o especialista "${assignedAgentName}" (ID: ${assignedAgentId}) da GAG Visual.
 A tua missão é EXECUTAR e RESOLVER integralmente a seguinte tarefa operacional:
 
 TÍTULO DA TAREFA: "${title}"
 DESCRIÇÃO / BRIEFING: "${description}"
 CATEGORIA: "${category}"
 
-Gera a entrega completa e profissional (ex: copy publicitário, storyboard Veo 3.1, estratégia de tráfego, plano de automação, parecer financeiro, código ou checklist operacional dependendo da tua especialidade).
+Gera a entrega completa e profissional (ex: copy publicitário, storyboard Veo 3.1, estratégia de tráfego, plano de automação n8n, auditoria financeira/DRE, scripts de vendas WhatsApp ou checklist operacional).
 
 Responde ESTRITAMENTE em JSON com a seguinte estrutura:
 {
   "status": "DONE",
-  "executionOutput": "Texto completo e formatado em Markdown com o trabalho executado e entrega final.",
+  "executionOutput": "Conteúdo Markdown direto da entrega começando imediatamente pelo resultado/tabela sem saudações.",
   "artifacts": [
     {
       "title": "Nome do Entregável",
@@ -2057,13 +2083,13 @@ Responde ESTRITAMENTE em JSON com a seguinte estrutura:
       "content": "Conteúdo sintetizado do entregável"
     }
   ],
-  "summary": "Resumo de 1 linha do que foi entregue",
+  "summary": "Resumo objetivo de 1 linha do que foi entregue",
   "recommendedNextSteps": ["Próximo passo 1", "Próximo passo 2"]
 }`;
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       prompt,
       {
         responseMimeType: "application/json",
@@ -2175,7 +2201,7 @@ Responda ESTRITAMENTE em JSON:
 
     const { response, usedModel } = await generateWithFallback(
       ai,
-      process.env.AI_MODEL || "gemini-2.5-flash",
+      process.env.AI_MODEL || "gemini-3.7-flash",
       prompt,
       {
         responseMimeType: "application/json",

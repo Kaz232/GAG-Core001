@@ -16,8 +16,8 @@ export interface AgentCapabilityMapping {
 export const AGENT_CAPABILITY_MAP: Record<string, AgentCapabilityMapping> = {
   "agent-kia": {
     agentId: "agent-kia",
-    name: "KIA (Knowledge Intelligent Agent)",
-    role: "Coordenação Geral & Master Orchestrator",
+    name: "KIA (Assistente Central & Orquestradora)",
+    role: "Assistente Central, Gestão do Sistema & Orquestradora",
     capabilities: [
       "orchestration",
       "planning",
@@ -220,6 +220,25 @@ export const AGENT_CAPABILITY_MAP: Record<string, AgentCapabilityMapping> = {
     ],
     tools: [
       "knowledge-base",
+    ],
+  },
+  "agent-sales-whatsapp": {
+    agentId: "agent-sales-whatsapp",
+    name: "Especialista Comercial & Fecho de Vendas (WhatsApp)",
+    role: "Fechador Comercial High-Ticket & Conversão WhatsApp",
+    capabilities: [
+      "sales",
+      "communication",
+      "lead-qualification",
+      "deal-closing",
+    ],
+    skills: [
+      "sales-copy",
+      "lead-management",
+    ],
+    tools: [
+      "knowledge-base",
+      "task-manager",
     ],
   },
 };

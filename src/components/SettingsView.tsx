@@ -347,7 +347,7 @@ export const SettingsView: React.FC = () => {
                 className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-amber-500/50"
               >
                 <option value="gemini-3.7-flash">Gemini 3.7 Flash (Ultra-Rápido, Multimodal & Inteligente)</option>
-                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview (Raciocínio Profundo & Estratégico)</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (Latência Mínima & Alta Eficiência)</option>
               </select>
             </div>
 

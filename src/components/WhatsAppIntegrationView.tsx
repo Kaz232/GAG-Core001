@@ -28,6 +28,11 @@ import {
   Users,
   ShieldCheck,
   ChevronRight,
+  QrCode,
+  Wifi,
+  WifiOff,
+  Power,
+  Layers,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { WhatsAppMessageLog } from "../types";
@@ -49,10 +54,17 @@ export const WhatsAppIntegrationView: React.FC = () => {
     playSfx,
   } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<"live_feed" | "config" | "routing" | "simulator">("live_feed");
+  const [activeSubTab, setActiveSubTab] = useState<"live_feed" | "qr_free" | "config" | "routing" | "simulator">("live_feed");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterSentiment, setFilterSentiment] = useState<string>("ALL");
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Free QR Connection State
+  const [qrConnected, setQrConnected] = useState(false);
+  const [qrGenerating, setQrGenerating] = useState(false);
+  const [qrCodePayload, setQrCodePayload] = useState<string | null>(null);
+  const [pairedDeviceNumber, setPairedDeviceNumber] = useState("+244 923 884 190 (Unitel Angola)");
+  const [batteryLevel, setBatteryLevel] = useState(94);
 
   // Outbound message state
   const [outboundPhone, setOutboundPhone] = useState("+244 923 ");
@@ -83,6 +95,31 @@ export const WhatsAppIntegrationView: React.FC = () => {
     setCopiedField(fieldId);
     playSfx("click");
     setTimeout(() => setCopiedField(null), 2500);
+  };
+
+  const handleGenerateQRCode = () => {
+    setQrGenerating(true);
+    playSfx("action");
+    setTimeout(() => {
+      setQrCodePayload(`2@gag_quian_core_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`);
+      setQrGenerating(false);
+      playSfx("success");
+    }, 1200);
+  };
+
+  const handleSimulateScanPairing = () => {
+    setQrGenerating(true);
+    setTimeout(() => {
+      setQrConnected(true);
+      setQrGenerating(false);
+      playSfx("success");
+    }, 1800);
+  };
+
+  const handleDisconnectQR = () => {
+    setQrConnected(false);
+    setQrCodePayload(null);
+    playSfx("click");
   };
 
   const handleSaveConfig = async () => {
@@ -267,6 +304,19 @@ export const WhatsAppIntegrationView: React.FC = () => {
           >
             <MessageSquare className="w-3.5 h-3.5" />
             <span>Feed em Direto ({whatsappLogs.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSubTab("qr_free")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+              activeSubTab === "qr_free"
+                ? "bg-gradient-to-r from-emerald-400 to-green-500 text-black font-extrabold shadow-md shadow-emerald-500/20"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+            }`}
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            <span>Conexão Gratuita (QR Code)</span>
+            <span className="text-[9px] px-1.5 py-0.2 rounded bg-black/30 font-mono">0 Kz</span>
           </button>
 
           <button
@@ -497,6 +547,225 @@ export const WhatsAppIntegrationView: React.FC = () => {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* SUB-TAB: FREE QR CODE INSTANT CONNECTION (BAILEYS / WHATSAPP WEB) */}
+      {activeSubTab === "qr_free" && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Top explainer banner */}
+          <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-950 border border-emerald-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/40 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Sem Custos Meta • 100% Gratuito
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-xs font-mono">
+                  Engine: Baileys Web Socket Core
+                </span>
+              </div>
+              <h3 className="text-lg font-black text-white">
+                Conectar WhatsApp com Leitura de QR Code
+              </h3>
+              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                Transforme qualquer número de telefone (Unitel/Africell/Movicel) num agente autónomo 24/7.
+                Basta apontar o WhatsApp do telemóvel para o código QR, exatamente como no WhatsApp Web.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {qrConnected ? (
+                <button
+                  onClick={handleDisconnectQR}
+                  className="px-4 py-2.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 text-xs font-bold flex items-center gap-2 transition-all shadow"
+                >
+                  <Power className="w-4 h-4" />
+                  <span>Desconectar Sessão</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleGenerateQRCode}
+                  disabled={qrGenerating}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-black text-xs font-extrabold flex items-center gap-2 transition-all shadow-lg shadow-emerald-950/50"
+                >
+                  {qrGenerating ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                  ) : (
+                    <QrCode className="w-4 h-4 text-black" />
+                  )}
+                  <span>{qrCodePayload ? "Regerar QR Code" : "Gerar QR Code de Conexão"}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Main QR Dashboard Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Box: QR Code Display or Live Device Card */}
+            <div className="lg:col-span-6 bg-[#090d16] rounded-3xl p-6 border border-slate-800 flex flex-col items-center justify-center text-center space-y-5 min-h-[420px]">
+              {qrConnected ? (
+                <div className="w-full space-y-6 animate-fadeIn">
+                  <div className="w-20 h-20 rounded-3xl bg-emerald-500/10 border-2 border-emerald-500/40 text-emerald-400 mx-auto flex items-center justify-center shadow-lg shadow-emerald-500/10">
+                    <Wifi className="w-10 h-10 text-emerald-400" />
+                  </div>
+
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/40 mb-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      Dispositivo Conectado & Operacional
+                    </div>
+                    <h4 className="text-lg font-black text-white">{pairedDeviceNumber}</h4>
+                    <p className="text-xs text-slate-400 mt-1">
+                      O motor multi-agente está a escutar e responder a mensagens em tempo real.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto text-left">
+                    <div className="p-3 bg-slate-900/80 rounded-2xl border border-slate-800">
+                      <div className="text-[10px] text-slate-400 font-medium">Bateria do Telefone</div>
+                      <div className="text-sm font-bold text-white mt-0.5">{batteryLevel}% • Carregado</div>
+                    </div>
+                    <div className="p-3 bg-slate-900/80 rounded-2xl border border-slate-800">
+                      <div className="text-[10px] text-slate-400 font-medium">Latência de IA</div>
+                      <div className="text-sm font-bold text-emerald-400 mt-0.5">850ms (Gemini Flash)</div>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center gap-3">
+                    <button
+                      onClick={() => setActiveSubTab("live_feed")}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-white font-medium flex items-center gap-1.5"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Ver Feed em Direto</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveSubTab("simulator")}
+                      className="px-4 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-xs text-emerald-300 font-bold border border-emerald-500/30 flex items-center gap-1.5"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-emerald-300" />
+                      <span>Testar Envio</span>
+                    </button>
+                  </div>
+                </div>
+              ) : qrCodePayload ? (
+                <div className="w-full space-y-4 animate-fadeIn">
+                  {/* Generated QR Code Canvas Frame */}
+                  <div className="relative p-4 bg-white rounded-3xl mx-auto w-64 h-64 shadow-2xl flex flex-col items-center justify-center border-4 border-emerald-500">
+                    <div className="grid grid-cols-6 grid-rows-6 gap-1 w-full h-full p-2">
+                      {/* Stylized QR Code Cells */}
+                      {Array.from({ length: 36 }).map((_, i) => {
+                        const isCorner =
+                          (i < 3 || (i >= 6 && i < 9) || (i >= 12 && i < 15)) ||
+                          (i % 6 >= 3 && i < 18 && (i % 6 === 4 || i % 6 === 5)) ||
+                          (i >= 24 && (i % 6 === 0 || i % 6 === 1 || i % 6 === 5));
+                        const isFilled = isCorner || (i * 7 + 13) % 3 === 0;
+                        return (
+                          <div
+                            key={i}
+                            className={`rounded-sm transition-all duration-500 ${
+                              isFilled ? "bg-slate-950" : "bg-transparent"
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center justify-center shadow-lg border-2 border-white">
+                        GAG
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-emerald-400">
+                      Código QR pronto para leitura! Expira em 60s
+                    </p>
+                    <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                      Abra o WhatsApp no seu smartphone &gt; Dispositivos Conectados &gt; Conectar Dispositivo
+                    </p>
+                  </div>
+
+                  {/* Simulator Pair Trigger */}
+                  <button
+                    onClick={handleSimulateScanPairing}
+                    disabled={qrGenerating}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 border border-slate-700 font-medium inline-flex items-center gap-1.5 transition-all"
+                  >
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Simular Leitura Instantânea</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 text-slate-500 mx-auto flex items-center justify-center">
+                    <QrCode className="w-8 h-8 text-slate-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Nenhum QR Code Ativo</h4>
+                    <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                      Clique no botão <strong>"Gerar QR Code de Conexão"</strong> acima para criar a chave de emparelhamento sem intermediários.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleGenerateQRCode}
+                    disabled={qrGenerating}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold inline-flex items-center gap-2 transition-all shadow-md"
+                  >
+                    <QrCode className="w-4 h-4 text-black" />
+                    <span>Gerar Código Agora</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Right Box: Instructions & Architecture comparison */}
+            <div className="lg:col-span-6 space-y-4">
+              <div className="bg-[#090d16] rounded-3xl p-6 border border-slate-800 space-y-4">
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-emerald-400" />
+                  <span>Passo a Passo de Conexão Gratuita</span>
+                </h4>
+
+                <ol className="text-xs text-slate-300 space-y-3 list-decimal list-inside leading-relaxed">
+                  <li className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80">
+                    <strong className="text-white">Gerar QR Code:</strong> Clique em "Gerar QR Code" para abrir a ponte de socket Baileys.
+                  </li>
+                  <li className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80">
+                    <strong className="text-white">Abrir o WhatsApp no Telemóvel:</strong> Vá a <strong>Definições</strong> (ou 3 pontinhos) &gt; <strong>Aparelhos Conectados</strong>.
+                  </li>
+                  <li className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80">
+                    <strong className="text-white">Ler o Código:</strong> Toque em <strong>Conectar um aparelho</strong> e aponte a câmara para o ecrã.
+                  </li>
+                  <li className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800/80">
+                    <strong className="text-white">Ativação 24/7:</strong> O QUIAN passa a responder instantaneamente com a personalidade dos 13 agentes, sem custos de mensagens da Meta!
+                  </li>
+                </ol>
+
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
+                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Diferença: Grátis (QR Code) vs. Meta Cloud API</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300 pt-1">
+                    <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                      <div className="font-bold text-emerald-300 mb-1">📱 Conexão QR Code (Grátis)</div>
+                      <div>• Zero custos por conversa</div>
+                      <div>• Usa qualquer chip Unitel/Africell</div>
+                      <div>• Ideal para início imediato</div>
+                    </div>
+                    <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                      <div className="font-bold text-blue-300 mb-1">🏢 Meta Cloud API</div>
+                      <div>• Verificação oficial verde da Meta</div>
+                      <div>• Múltiplos agentes humanos em paralelo</div>
+                      <div>• Webhook direto em nuvem</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

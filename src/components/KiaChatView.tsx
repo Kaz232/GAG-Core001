@@ -63,6 +63,7 @@ export const KiaChatView: React.FC = () => {
   const autoSentRef = useRef(false);
   const isListeningRef = useRef(false);
   const isProcessingRef = useRef(false);
+  const isSpeakingLiveRef = useRef(false);
   const attachmentsRef = useRef(attachments);
   const systemSettingsRef = useRef(systemSettings);
 
@@ -79,6 +80,10 @@ export const KiaChatView: React.FC = () => {
   }, [isProcessing]);
 
   useEffect(() => {
+    isSpeakingLiveRef.current = isSpeakingLive;
+  }, [isSpeakingLive]);
+
+  useEffect(() => {
     attachmentsRef.current = attachments;
   }, [attachments]);
 
@@ -89,11 +94,49 @@ export const KiaChatView: React.FC = () => {
   // Monitor speaking status to avoid TTS feedback loops
   useEffect(() => {
     const checkSpeaking = () => {
-      setIsSpeakingLive(getIsSpeaking());
+      const currentlySpeaking = getIsSpeaking();
+      setIsSpeakingLive(currentlySpeaking);
     };
-    const interval = setInterval(checkSpeaking, 150);
+    const interval = setInterval(checkSpeaking, 100);
     return () => clearInterval(interval);
   }, []);
+
+  // isSpeakingLive lock: Mutes wake-word detector & aborts ambient transcription during TTS playback
+  // and seamlessly hands off back to listening mode once playback concludes
+  useEffect(() => {
+    isSpeakingLiveRef.current = isSpeakingLive;
+
+    if (isSpeakingLive) {
+      // 1. Lock wake word detector completely during TTS speech
+      wakeWordDetector.setMutedForPlayback(true);
+
+      // 2. Abort any active speech recognition so KIA's audio output isn't recorded as user input
+      if (isListeningRef.current) {
+        setIsListening(false);
+        isListeningRef.current = false;
+        if (recognitionRef.current) {
+          try {
+            recognitionRef.current.abort ? recognitionRef.current.abort() : recognitionRef.current.stop();
+          } catch {}
+        }
+      }
+
+      // 3. Clear any pending silence timers
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      setIsSilenceCountdown(false);
+      setLiveTranscript("");
+      liveTranscriptRef.current = "";
+    } else {
+      // 4. Seamless hand-off back to listening/wake-word mode when TTS finishes
+      wakeWordDetector.setMutedForPlayback(false);
+      if (!isListeningRef.current && systemSettingsRef.current.wakeWordEnabled) {
+        wakeWordDetector.start();
+      }
+    }
+  }, [isSpeakingLive]);
 
   // Auto-scroll ao receber novas mensagens
   const scrollToBottom = () => {
@@ -215,9 +258,11 @@ export const KiaChatView: React.FC = () => {
       console.error("Erro ao executar comando de voz:", err);
     } finally {
       autoSentRef.current = false;
-      wakeWordDetector.setMutedForPlayback(false);
-      if (!systemSettingsRef.current.voiceContinuous && systemSettingsRef.current.wakeWordEnabled) {
-        wakeWordDetector.start();
+      if (!getIsSpeaking() && !isSpeakingLiveRef.current) {
+        wakeWordDetector.setMutedForPlayback(false);
+        if (!systemSettingsRef.current.voiceContinuous && systemSettingsRef.current.wakeWordEnabled) {
+          wakeWordDetector.start();
+        }
       }
     }
   };
@@ -368,7 +413,7 @@ export const KiaChatView: React.FC = () => {
   // Listener para Wake Word ("KIA") e comandos imediatos
   useEffect(() => {
     const handleWakeStart = () => {
-      if (!isListeningRef.current && !isProcessingRef.current) {
+      if (!isListeningRef.current && !isProcessingRef.current && !getIsSpeaking() && !isSpeakingLiveRef.current) {
         startVoiceRecording();
       }
     };
@@ -376,6 +421,10 @@ export const KiaChatView: React.FC = () => {
 
     // Subscrição direta no detector de wake-word ("KIA", "Ei KIA", "Olá KIA", "Ok KIA")
     const unsubscribeWake = wakeWordDetector.subscribe((event) => {
+      // Ignora ativação se a KIA estiver ativamente a falar (TTS)
+      if (getIsSpeaking() || isSpeakingLiveRef.current) {
+        return;
+      }
       if (event.isImmediateCommand && event.commandText && event.commandText.length >= 2) {
         if (!isProcessingRef.current && !autoSentRef.current) {
           autoSentRef.current = true;
@@ -396,6 +445,8 @@ export const KiaChatView: React.FC = () => {
 
   const startVoiceRecording = () => {
     stopTtsAudio();
+    setIsSpeakingLive(false);
+    isSpeakingLiveRef.current = false;
     wakeWordDetector.stop();
     wakeWordDetector.setMutedForPlayback(false);
 
@@ -474,7 +525,9 @@ export const KiaChatView: React.FC = () => {
     try {
       await sendKiaMessage(text, currentAttachments);
     } finally {
-      wakeWordDetector.setMutedForPlayback(false);
+      if (!getIsSpeaking() && !isSpeakingLiveRef.current) {
+        wakeWordDetector.setMutedForPlayback(false);
+      }
     }
   };
 

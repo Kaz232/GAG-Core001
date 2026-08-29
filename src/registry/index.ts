@@ -10,5 +10,6 @@ export * from "./toolRegistry";
 export * from "./capabilityTypes";
 export * from "./capabilityRegistry";
 export * from "./agentCapabilityMap";
+export * from "./agentCatalogPrompts";
 export * from "./capabilityResolver";
 export * from "./skillSelector";

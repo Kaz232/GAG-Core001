@@ -7,6 +7,7 @@ import {
   AuditLog,
   User,
 } from "../types";
+import { getAgentCatalogPrompt, GAG_GLOBAL_SYSTEM_BASE } from "../registry/agentCatalogPrompts";
 
 export const INITIAL_USER: User = {
   id: "usr-owner-01",
@@ -16,21 +17,22 @@ export const INITIAL_USER: User = {
   avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
 };
 
-// Initial Specialized Agents catalog:
-// 1. KIA Master (ACTIVE)
-// 2. O Soba - Arquiteto-Chefe de IA (ACTIVE)
-// 3. Consultor Estratégico GAG (DRAFT)
-// 4. Scanner & OCR Documental (DRAFT)
-// 5. Professor & Mestre Pedagógico (DRAFT)
-// 6. Diretor de Arte & Motion Veo (DRAFT)
-// 7. Copywriter & Estrategista de Conteúdo (DRAFT)
+// Catálogo Oficial dos Agentes Operacionais GAG Core:
+// Agente 01: KIA (Assistente Central & Orquestradora)
+// Agente 02: Scanner Económico & OCR (DRE / Finanças)
+// Agente 03: Gestor de Tráfego & Performance
+// Agente 04: Copywriter & Redator de Conteúdo
+// Agente 05: Designer Visual & Diretor de Arte
+// Agente 06: Engenheiro de Infraestrutura & Automação (n8n)
+// Agente 07: Especialista Comercial & Fecho de Vendas (WhatsApp)
 export const INITIAL_AGENTS: Agent[] = [
+  // Agente 01: KIA
   {
     id: "agent-kia",
     slug: "kia-master",
-    name: "KIA (Knowledge Intelligent Agent)",
-    description: "Inteligência-mestre e núcleo operacional da GAG Visual. Coordena conhecimento, tarefas, documentos, skills, agentes e ferramentas internas.",
-    objective: "Orquestrar todas as operações da GAG, rotear intenções, executar ferramentas com auditoria e apoiar o proprietário na liderança estratégica.",
+    name: "KIA (Assistente Central & Orquestradora)",
+    description: "Gestão do sistema GAG Core, roteamento de tarefas hands-free por voz e execução de ações rápidas.",
+    objective: "Interpretar intenções do utilizador, disparar automações e apresentar estados do sistema de forma sucinta.",
     skills: [
       "gag-knowledge-curation",
       "gag-prompt-engineering",
@@ -49,30 +51,179 @@ export const INITIAL_AGENTS: Agent[] = [
       "audit:write",
     ],
     status: "ACTIVE",
-    version: "2.4.0",
+    version: "3.0.0",
     avatarColor: "#F59E0B", // GAG Gold
-    roleTitle: "Master Operational Intelligence & Soba Router",
-    systemPrompt: "Tu és a KIA (Knowledge Intelligent Agent), a inteligência-mestre e Orquestradora Central (Soba Router) da GAG Visual. Tu recebes comandos em linguagem natural, decompões objetivos complexos em sub-tarefas operacionais e disparas a execução paralela diretamente para a equipa de 13 agentes especialistas (Copywriting, Design & Veo 3.1, Tráfego Pago & ROAS, Kaza Core, Scanner OCR, Educação Anki, Infraestrutura Cisco e Consultoria). Manténs conformidade com a Norma Técnica e registas todas as transações na Trilha de Auditoria Imutável SHA-256.",
+    roleTitle: "Assistente Central, Gestão do Sistema & Orquestradora",
+    systemPrompt: getAgentCatalogPrompt("agent-kia"),
     createdAt: "2026-01-15T09:00:00Z",
-    updatedAt: "2026-08-20T14:30:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
   },
+  // Agente 02: Scanner Económico & OCR (DRE / Finanças)
+  {
+    id: "agent-scanner",
+    slug: "scanner-economico-ocr",
+    name: "Scanner Económico & OCR (DRE / Finanças)",
+    description: "Extração e auditoria de documentos financeiros (DRE, Balancetes, Faturas, NIF e impostos).",
+    objective: "Extrair rubricas em tabelas comparativas de vários anos, calcular margens (EBITDA, Líquida) e sinalizar discrepâncias tributárias.",
+    skills: [
+      "gag-data-analysis-brief",
+      "gag-knowledge-curation",
+      "gag-security-screening",
+    ],
+    permissions: [
+      "document:read",
+      "document:process",
+      "knowledge:write",
+      "task:write",
+      "finance:*",
+    ],
+    status: "ACTIVE",
+    version: "3.0.0",
+    avatarColor: "#10B981", // Emerald
+    roleTitle: "Auditor Financeiro Forense & OCR Documental",
+    systemPrompt: getAgentCatalogPrompt("agent-scanner"),
+    createdAt: "2026-08-12T10:30:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
+  },
+  // Agente 03: Gestor de Tráfego & Performance
+  {
+    id: "agent-campaigns",
+    slug: "gestor-trafego-performance",
+    name: "Gestor de Tráfego & Performance",
+    description: "Criação e otimização de campanhas (Meta Ads, Google Ads).",
+    objective: "Apresentar estruturas de campanhas com orçamento em AOA/USD, público-alvo, criativos e métricas de ROI/CPA em tabelas.",
+    skills: [
+      "gag-content-production",
+      "gag-data-analysis-brief",
+      "gag-crm-requirements",
+    ],
+    permissions: [
+      "conversation:execute",
+      "knowledge:read",
+      "task:write",
+    ],
+    status: "ACTIVE",
+    version: "3.0.0",
+    avatarColor: "#3B82F6", // Blue
+    roleTitle: "Estrategista de Tráfego Pago & Otimização de ROAS",
+    systemPrompt: getAgentCatalogPrompt("agent-campaigns"),
+    createdAt: "2026-08-23T13:55:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
+  },
+  // Agente 04: Copywriter & Redator de Conteúdo
+  {
+    id: "agent-copywriter",
+    slug: "copywriter-redator",
+    name: "Copywriter & Redator de Conteúdo",
+    description: "Produção de textos persuasivos, e-mails de vendas e posts institucionais.",
+    objective: "Foco em ganchos fortes, propostas de valor claras e chamadas para ação (CTA) objetivas.",
+    skills: [
+      "gag-content-production",
+      "gag-prompt-engineering",
+      "gag-data-analysis-brief",
+    ],
+    permissions: [
+      "conversation:execute",
+      "knowledge:read",
+      "task:write",
+    ],
+    status: "ACTIVE",
+    version: "3.0.0",
+    avatarColor: "#EC4899", // Pink
+    roleTitle: "Redator Publicitário Persuasivo & Copywriter High-Ticket",
+    systemPrompt: getAgentCatalogPrompt("agent-copywriter"),
+    createdAt: "2026-08-23T10:00:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
+  },
+  // Agente 05: Designer Visual & Diretor de Arte
+  {
+    id: "agent-art-director",
+    slug: "designer-visual-arte",
+    name: "Designer Visual & Diretor de Arte",
+    description: "Geração de conceitos visuais, direções de arte e prompts detalhados para ferramentas de imagem.",
+    objective: "Entregar composições visuais com especificações de cores (Hex), tipografia e layouts para campanhas.",
+    skills: [
+      "gag-design-with-ai",
+      "gag-video-production",
+      "gag-prompt-engineering",
+    ],
+    permissions: [
+      "conversation:execute",
+      "knowledge:read",
+      "task:write",
+    ],
+    status: "ACTIVE",
+    version: "3.0.0",
+    avatarColor: "#8B5CF6", // Purple
+    roleTitle: "Diretor de Arte, Conceitos Visuais & Motion Veo",
+    systemPrompt: getAgentCatalogPrompt("agent-art-director"),
+    createdAt: "2026-08-23T09:30:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
+  },
+  // Agente 06: Engenheiro de Infraestrutura & Automação (n8n)
+  {
+    id: "agent-automation-kaza",
+    slug: "engenheiro-infra-n8n",
+    name: "Engenheiro de Infraestrutura & Automação (n8n)",
+    description: "Monitorização de rotas de API, fluxos n8n e integrações de sistema.",
+    objective: "Diagnosticar erros de endpoints e sugerir correções de código/JSON diretamente sem rodeios.",
+    skills: [
+      "gag-workflow-automation",
+      "gag-crm-requirements",
+      "gag-security-screening",
+    ],
+    permissions: [
+      "conversation:execute",
+      "knowledge:read",
+      "task:write",
+      "task:manage",
+    ],
+    status: "ACTIVE",
+    version: "3.0.0",
+    avatarColor: "#06B6D4", // Cyan
+    roleTitle: "Arquiteto de Integração, n8n, APIs & Redes",
+    systemPrompt: getAgentCatalogPrompt("agent-automation-kaza"),
+    createdAt: "2026-08-23T13:55:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
+  },
+  // Agente 07: Especialista Comercial & Fecho de Vendas (WhatsApp)
+  {
+    id: "agent-sales-whatsapp",
+    slug: "especialista-comercial-whatsapp",
+    name: "Especialista Comercial & Fecho de Vendas (WhatsApp)",
+    description: "Qualificação de leads e respostas rápidas para conversão.",
+    objective: "Criar scripts de abordagem direta, tratamento de objeções e acompanhamento de propostas.",
+    skills: [
+      "gag-crm-requirements",
+      "gag-content-production",
+      "gag-data-analysis-brief",
+    ],
+    permissions: [
+      "conversation:execute",
+      "knowledge:read",
+      "task:write",
+      "sales:*",
+    ],
+    status: "ACTIVE",
+    version: "3.0.0",
+    avatarColor: "#14B8A6", // Teal
+    roleTitle: "Fechador Comercial High-Ticket & Conversão WhatsApp",
+    systemPrompt: getAgentCatalogPrompt("agent-sales-whatsapp"),
+    createdAt: "2026-08-29T11:00:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
+  },
+  // Agentes Especialistas de Apoio
   {
     id: "agent-soba",
     slug: "o-soba",
     name: "O Soba",
-    description: "És 'O Soba', o agente-chefe e arquiteto de Inteligência Artificial do nosso ecossistema. A tua função primária e exclusiva é automatizar a criação de outros agentes de IA. Não serves para conversar com utilizadores finais; tu falas com o sistema e geras infraestrutura.",
-    objective: "Atuar com excelência como o agente-chefe e arquiteto de Inteligência Artificial do nosso ecossistema. Automatizar a criação de outros agentes de IA a partir de dados da base de dados, estruturando configurações completas como Engenheiro de Prompt Sénior para a GAG Visual.",
+    description: "Agente-chefe e arquiteto de Inteligência Artificial para criação de novos agentes no ecossistema.",
+    objective: "Automatizar a criação e configuração de agentes de IA como Engenheiro de Prompt Sénior.",
     skills: [
       "gag-prompt-engineering",
       "gag-security-screening",
       "gag-workflow-automation",
-      "gag-crm-requirements",
       "gag-ai-agent-design",
-      "gag-video-production",
-      "gag-design-with-ai",
-      "gag-content-production",
-      "gag-data-analysis-brief",
-      "gag-knowledge-curation",
     ],
     permissions: [
       "conversation:execute",
@@ -81,22 +232,21 @@ export const INITIAL_AGENTS: Agent[] = [
       "agent_factory:read",
       "agent_factory:manage",
       "task:write",
-      "task:manage",
       "audit:write",
     ],
     status: "ACTIVE",
-    version: "0.1.0",
+    version: "3.0.0",
     avatarColor: "#EAB308", // Soba Royal Amber
-    roleTitle: "Arquiteto-Chefe de IA & Especialista GAG Core",
-    systemPrompt: "És 'O Soba', o agente-chefe e arquiteto de Inteligência Artificial do nosso ecossistema. A tua função primária e exclusiva é automatizar a criação de outros agentes de IA. Não serves para conversar com utilizadores finais; tu falas com o sistema e geras infraestrutura. O Teu Modo de Operação: Vais ler dados de entrada provenientes de uma base de dados (que podem conter uma ideia vaga, um nome de um agente, ou um objetivo simples). A partir dessa leitura mínima, a tua tarefa é pensar como um Engenheiro de Prompt Sénior e estruturar a configuração completa desse novo agente.",
+    roleTitle: "Arquiteto-Chefe de IA & Engenharia de Prompts",
+    systemPrompt: `${GAG_GLOBAL_SYSTEM_BASE}\n\n[PAPEL: O SOBA - ARQUITETO DE IA]\nAtua como o arquiteto supremo de inteligência artificial. Gera especificações JSON e configurações de novos agentes com parâmetros exatos sem introduções.`,
     createdAt: "2026-08-23T09:00:00Z",
-    updatedAt: "2026-08-23T13:42:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
   },
   {
     id: "agent-consultant",
     slug: "consultor-gag",
     name: "Consultor GAG",
-    description: "Consultoria estratégica e operacional da GAG. Especializado em posicionamento de marca, marketing digital de alta conversão e inteligência de mercado.",
+    description: "Consultoria estratégica e operacional baseada na metodologia TOB (Tecnologia, Organização e Branding).",
     objective: "Desenvolver briefings estratégicos, auditar propostas de valor e fornecer diagnósticos de branding e crescimento.",
     skills: [
       "gag-data-analysis-brief",
@@ -109,45 +259,20 @@ export const INITIAL_AGENTS: Agent[] = [
       "task:read",
       "document:read",
     ],
-    status: "DRAFT",
-    version: "1.0.0",
+    status: "ACTIVE",
+    version: "3.0.0",
     avatarColor: "#6366F1", // Indigo
-    roleTitle: "Strategic & Market Consultant",
-    systemPrompt: "Tu és o Consultor GAG. Especialista em estratégia empresarial, marketing digital, funis de conversão e consultoria de alto impacto para a GAG Visual.",
+    roleTitle: "Estrategista de Negócios & Diagnóstico TOB",
+    systemPrompt: `${GAG_GLOBAL_SYSTEM_BASE}\n\n[PAPEL: CONSULTOR GAG - ESTRATÉGIA EMPRESARIAL]\nEntrega diagnósticos empresariais TOB (Tecnologia, Organização e Branding) com tabelas comparativas, métricas de crescimento e planos de ação diretos sem saudações.`,
     createdAt: "2026-08-10T11:00:00Z",
-    updatedAt: "2026-08-19T16:00:00Z",
-  },
-  {
-    id: "agent-scanner",
-    slug: "scanner-intelligence",
-    name: "Scanner Documental",
-    description: "Processamento e análise documental profunda com OCR inteligente e extração de entidades estruturadas.",
-    objective: "Transformar documentos não-estruturados (PDFs, briefings, relatórios) em conhecimento catalogado e tarefas executáveis.",
-    skills: [
-      "gag-data-analysis-brief",
-      "gag-knowledge-curation",
-      "gag-security-screening",
-    ],
-    permissions: [
-      "document:read",
-      "document:process",
-      "knowledge:write",
-      "task:write",
-    ],
-    status: "DRAFT",
-    version: "1.0.0",
-    avatarColor: "#10B981", // Emerald
-    roleTitle: "Document Intelligence Processor",
-    systemPrompt: "Tu és o Scanner Documental da GAG Core. Tua função é analisar contratos, propostas e briefings, extraindo sumários, itens de ação e entidades-chave.",
-    createdAt: "2026-08-12T10:30:00Z",
-    updatedAt: "2026-08-20T17:00:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
   },
   {
     id: "agent-educator",
     slug: "professor-mestre",
     name: "Professor & Mestre Pedagógico",
-    description: "Formação da equipa, tutoria contínua, conjugação de conceitos da Base de Conhecimento e ensino prático de metodologias criativas.",
-    objective: "Educar os membros da equipa, explicar regras da marca, guiar a aprendizagem em design/copywriting e transformar dúvidas em lições estruturadas.",
+    description: "Formação da equipa, tutoria contínua e síntese pedagógica da Base de Conhecimento.",
+    objective: "Educar membros da equipa, explicar regras da marca e metodologias com clareza e exemplos práticos.",
     skills: [
       "gag-knowledge-curation",
       "gag-prompt-engineering",
@@ -159,211 +284,13 @@ export const INITIAL_AGENTS: Agent[] = [
       "knowledge:write",
       "task:read",
     ],
-    status: "DRAFT",
-    version: "1.0.0",
+    status: "ACTIVE",
+    version: "3.0.0",
     avatarColor: "#3B82F6", // Blue
-    roleTitle: "Knowledge & Education Master",
-    systemPrompt: "Tu és o Professor e Educador do GAG Core OS. Ensina com empatia, rigor pedagógico, exemplos claros e métodos práticos, alinhando a equipa com a cultura da GAG Visual.",
+    roleTitle: "Educador & Formador Corporativo",
+    systemPrompt: `${GAG_GLOBAL_SYSTEM_BASE}\n\n[PAPEL: PROFESSOR & MESTRE PEDAGÓGICO]\nExplica metodologias, conceitos e diretrizes com listas didáticas, passos estruturados e exemplos práticos sem rodeios introdutórios.`,
     createdAt: "2026-08-23T09:00:00Z",
-    updatedAt: "2026-08-23T11:00:00Z",
-  },
-  {
-    id: "agent-art-director",
-    slug: "diretor-arte-veo",
-    name: "Diretor de Arte & Motion Veo",
-    description: "Criação de identidade visual de luxo, direção criativa, prompts para geração de imagens e animação cinematográfica com Veo.",
-    objective: "Garantir a coerência estética da marca GAG Visual em todas as criações gráficas, vídeos 16:9 e reels 9:16.",
-    skills: [
-      "gag-design-with-ai",
-      "gag-video-production",
-      "gag-prompt-engineering",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "task:write",
-    ],
-    status: "DRAFT",
-    version: "1.0.0",
-    avatarColor: "#8B5CF6", // Purple
-    roleTitle: "Creative Visual & Motion Director",
-    systemPrompt: "Tu és o Diretor de Arte da GAG Visual. Dominas estética Tech-African de luxo, contrastes refinados, tipografia de alto impacto e geração cinemática com Veo.",
-    createdAt: "2026-08-23T09:30:00Z",
-    updatedAt: "2026-08-23T11:00:00Z",
-  },
-  {
-    id: "agent-copywriter",
-    slug: "copywriter-estrategico",
-    name: "Copywriter & Estrategista de Conteúdo",
-    description: "Redação publicitária de alta conversão, roteirização para redes sociais, artigos editoriais e mensagens de engajamento.",
-    objective: "Produzir textos persuasivos, autoritários e envolventes para todas as frentes de comunicação da GAG Visual e clientes.",
-    skills: [
-      "gag-content-production",
-      "gag-prompt-engineering",
-      "gag-data-analysis-brief",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "task:write",
-    ],
-    status: "DRAFT",
-    version: "1.0.0",
-    avatarColor: "#EC4899", // Pink
-    roleTitle: "Strategic Copywriter & Storyteller",
-    systemPrompt: "Tu és o Copywriter Sénior da GAG Visual. Escreves com ganchos magnéticos, clareza cirúrgica, storytelling emocional e apelos à ação convincentes.",
-    createdAt: "2026-08-23T10:00:00Z",
-    updatedAt: "2026-08-23T11:00:00Z",
-  },
-  // Integração e Sistemas
-  {
-    id: "agent-automation-kaza",
-    slug: "arquiteto-automacao-kaza",
-    name: "Arquiteto de Automação Kaza Core",
-    description: "Especialista em desenhar fluxos de dados entre Supabase, Google Apps Script, Make e Zapier, garantindo que o CRM e os formulários comunicam sem falhas.",
-    objective: "Desenhar, testar e manter pipelines de integração estáveis entre bancos relacionais, webhooks e ecossistemas de CRM da agência e clientes.",
-    skills: [
-      "gag-workflow-automation",
-      "gag-crm-requirements",
-      "gag-security-screening",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "task:write",
-      "task:manage",
-    ],
-    status: "ACTIVE",
-    version: "1.0.0",
-    avatarColor: "#06B6D4", // Cyan
-    roleTitle: "Kaza Core Integration & Automation Architect",
-    systemPrompt: "Tu és o Arquiteto de Automação Kaza Core. Especialista em Make, Zapier, Google Apps Script e Supabase. Cria fluxos idempotentes, resilientes a falhas e perfeitamente sincronizados.",
-    createdAt: "2026-08-23T13:55:00Z",
-    updatedAt: "2026-08-23T14:00:00Z",
-  },
-  {
-    id: "agent-infra-network",
-    slug: "analista-infraestrutura-redes",
-    name: "Analista de Infraestrutura e Redes",
-    description: "Focado na resolução de problemas de conectividade, simulações de topologias em ferramentas como o Cisco Packet Tracer e implementação de protocolos de cibersegurança.",
-    objective: "Auditar infraestrutura, topologias de rede corporativa, conectividade de servidores e garantir conformidade de segurança e baixa latência.",
-    skills: [
-      "gag-security-screening",
-      "gag-workflow-automation",
-      "gag-data-analysis-brief",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "audit:write",
-      "task:read",
-    ],
-    status: "ACTIVE",
-    version: "1.0.0",
-    avatarColor: "#14B8A6", // Teal
-    roleTitle: "Infrastructure, Topology & Network Analyst",
-    systemPrompt: "Tu és o Analista de Infraestrutura e Redes da GAG. Especialista em topologias Cisco, diagnóstico de pacotes, rotas, firewalls e resiliência de conectividade.",
-    createdAt: "2026-08-23T13:55:00Z",
-    updatedAt: "2026-08-23T14:00:00Z",
-  },
-  // Design e IA Visual
-  {
-    id: "agent-avatar-veo",
-    slug: "diretor-avatares-veo",
-    name: "Diretor de Avatares e IA Generativa",
-    description: "Mestre em engenharia de prompts para Veo 3 e geradores de imagem. Focado em criar personagens hiper-realistas que respeitem traços específicos e a identidade cultural angolana, evitando resultados artificiais.",
-    objective: "Desenvolver avatares digitais ultra-realistas com consistência facial (Face-Lock), iluminação natural e preservação da representatividade cultural angolana.",
-    skills: [
-      "gag-design-with-ai",
-      "gag-video-production",
-      "gag-prompt-engineering",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "task:write",
-    ],
-    status: "ACTIVE",
-    version: "1.0.0",
-    avatarColor: "#A855F7", // Purple Bright
-    roleTitle: "Generative Avatar & Cultural Visual Director",
-    systemPrompt: "Tu és o Diretor de Avatares e IA Generativa da GAG Visual. Especialista em Veo 3, Nano Banana e geradores de imagem. Garantes consistência facial, realismo ótico e autêntica estética angolana.",
-    createdAt: "2026-08-23T13:55:00Z",
-    updatedAt: "2026-08-23T14:00:00Z",
-  },
-  {
-    id: "agent-brandkit",
-    slug: "estrategista-brandkits",
-    name: "Estrategista de Brand Kits GAG",
-    description: "Especialista em estruturar identidades visuais completas, gerando paletas de cores, diretrizes de aplicação e layouts para novos clientes.",
-    objective: "Transformar briefings conceituais em Brand Kits completos (paletas hexadecimais, tipografia, aplicações de logo e mockups) com rigor técnico e sofisticação.",
-    skills: [
-      "gag-design-with-ai",
-      "gag-prompt-engineering",
-      "gag-content-production",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "task:write",
-    ],
-    status: "ACTIVE",
-    version: "1.0.0",
-    avatarColor: "#F59E0B", // Amber Gold
-    roleTitle: "Brand Kit & Visual Identity Strategist",
-    systemPrompt: "Tu és o Estrategista de Brand Kits da GAG Visual. Produzes manuais de identidade visual impecáveis, paletas contrastadas, regras de tipografia e templates institucionais.",
-    createdAt: "2026-08-23T13:55:00Z",
-    updatedAt: "2026-08-23T14:00:00Z",
-  },
-  // Escala e Negócios
-  {
-    id: "agent-campaigns",
-    slug: "gestor-campanhas-digitais",
-    name: "Gestor de Campanhas Digitais",
-    description: "Especialista em aplicar os fundamentos de marketing digital, otimizando campanhas e analisando o tráfego para escalar a presença online.",
-    objective: "Planejar, estruturar e otimizar campanhas de tráfego pago e orgânico com foco em ROI, ROAS, segmentação cirúrgica e crescimento acelerado.",
-    skills: [
-      "gag-content-production",
-      "gag-data-analysis-brief",
-      "gag-crm-requirements",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "task:write",
-    ],
-    status: "ACTIVE",
-    version: "1.0.0",
-    avatarColor: "#10B981", // Emerald
-    roleTitle: "Digital Campaigns & Traffic Growth Manager",
-    systemPrompt: "Tu és o Gestor de Campanhas Digitais da GAG Visual. Dominas funis de tráfego, testes A/B, métricas de conversão e estratégias de escala multicanal.",
-    createdAt: "2026-08-23T13:55:00Z",
-    updatedAt: "2026-08-23T14:00:00Z",
-  },
-  {
-    id: "agent-support-ops",
-    slug: "engenheiro-processos-suporte",
-    name: "Engenheiro de Processos de Suporte",
-    description: "Focado em organizar as entradas de clientes via HubSpot e Typeform, criando respostas automatizadas e triando as necessidades antes do contacto humano.",
-    objective: "Construir funis de atendimento rápido, triagem inteligente de tickets, FAQs automatizados e encaminhamento qualificado para a equipa.",
-    skills: [
-      "gag-crm-requirements",
-      "gag-workflow-automation",
-      "gag-security-screening",
-    ],
-    permissions: [
-      "conversation:execute",
-      "knowledge:read",
-      "task:write",
-      "task:manage",
-    ],
-    status: "ACTIVE",
-    version: "1.0.0",
-    avatarColor: "#3B82F6", // Blue
-    roleTitle: "Support Workflow & Customer Intake Engineer",
-    systemPrompt: "Tu és o Engenheiro de Processos de Suporte. Conectas HubSpot e Typeform a rotinas de triagem imediata, garantindo SLA ultra-rápido e filtragem de leads.",
-    createdAt: "2026-08-23T13:55:00Z",
-    updatedAt: "2026-08-23T14:00:00Z",
+    updatedAt: "2026-08-29T11:00:00Z",
   },
 ];
 

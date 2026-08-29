@@ -144,6 +144,9 @@ interface AppContextType {
 
   // Scanner Actions
   uploadAndScanDoc: (file: File | { name: string; type: string; content: string }) => Promise<ScannedDocument>;
+  uploadAndScanBatchDocs: (files: (File | { name: string; type: string; content: string })[], onProgress?: (current: number, total: number, currentFileName: string) => void) => Promise<ScannedDocument[]>;
+  deleteScannedDoc: (docId: string) => void;
+  clearScannedDocs: () => void;
   convertDocToKnowledge: (docId: string) => void;
   convertDocToTasks: (docId: string) => void;
   updateDocStatus: (docId: string, status: any) => void;
@@ -349,26 +352,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
     const saved = localStorage.getItem("gag_settings");
     const supabaseCfg = getSupabaseConfig();
-    return saved
-      ? JSON.parse(saved)
-      : {
-          aiProvider: "gemini",
-          aiModel: "gemini-3.7-flash",
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        const model = parsed.aiModel || "";
+        if (
+          !model ||
+          model.includes("1.5") ||
+          model.includes("3.1-pro") ||
+          model.includes("2.5") ||
+          model === "gemini-pro"
+        ) {
+          parsed.aiModel = "gemini-3.7-flash";
+        }
+        return {
+          ...parsed,
           supabaseConfigured: supabaseCfg.isConfigured,
           supabaseUrl: supabaseCfg.url,
           supabaseAnonKey: supabaseCfg.anonKey,
-          activeRole: "OWNER",
-          brandName: "GAG Visual",
-          autoAudioTts: true,
-          voiceName: "Kore",
-          voiceContinuous: true,
-          voiceVadEnabled: true,
-          voiceSilenceDelayMs: 800,
-          wakeWordEnabled: true,
-          wakeWordTriggerPhrase: "kia",
-          wakeWordSoundFeedback: true,
-          wakeWordAutoSubmitCommand: true,
         };
+      } catch {
+        // Fallback to default
+      }
+    }
+    return {
+      aiProvider: "gemini",
+      aiModel: "gemini-3.7-flash",
+      supabaseConfigured: supabaseCfg.isConfigured,
+      supabaseUrl: supabaseCfg.url,
+      supabaseAnonKey: supabaseCfg.anonKey,
+      activeRole: "OWNER",
+      brandName: "GAG Visual",
+      autoAudioTts: true,
+      voiceName: "Kore",
+      voiceContinuous: true,
+      voiceVadEnabled: true,
+      voiceSilenceDelayMs: 800,
+      wakeWordEnabled: true,
+      wakeWordTriggerPhrase: "kia",
+      wakeWordSoundFeedback: true,
+      wakeWordAutoSubmitCommand: true,
+    };
   });
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
@@ -910,7 +934,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!text.trim() && attachments.length === 0) return;
 
     playSfx("action");
-    const userMsgId = `msg-${Date.now()}`;
+    const userMsgId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
     const userMsg: ChatMessage = {
       id: userMsgId,
       role: "user",
@@ -924,7 +948,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Enqueue response generation as highest priority P0 task with real-time SSE streaming
     return messageQueue.enqueue(async () => {
-      const assistantMsgId = `msg-${Date.now()}`;
+      const assistantMsgId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
       // Insert initial streaming message bubble for zero-latency feedback
       const initialAssistantMsg: ChatMessage = {
@@ -1649,6 +1673,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setScannedDocs((prev) => prev.map((d) => (d.id === docId ? fallbackDoc : d)));
       return fallbackDoc;
     }
+  };
+
+  const uploadAndScanBatchDocs = async (
+    files: (File | { name: string; type: string; content: string })[],
+    onProgress?: (current: number, total: number, currentFileName: string) => void
+  ): Promise<ScannedDocument[]> => {
+    if (!files || files.length === 0) return [];
+    playSfx("action");
+    const results: ScannedDocument[] = [];
+    const total = files.length;
+
+    for (let i = 0; i < total; i++) {
+      const file = files[i];
+      const fname = "name" in file ? file.name : `documento_${i + 1}.txt`;
+      if (onProgress) {
+        onProgress(i + 1, total, fname);
+      }
+      try {
+        const doc = await uploadAndScanDoc(file);
+        results.push(doc);
+      } catch (err) {
+        console.error(`Erro ao processar ${fname} em lote:`, err);
+      }
+    }
+
+    recordAuditLog(
+      "Scanner Documental em Lote Concluído",
+      "document",
+      "SUCCESS",
+      `Processados com sucesso ${results.length} de ${total} ficheiros.`
+    );
+    return results;
+  };
+
+  const deleteScannedDoc = (docId: string) => {
+    setScannedDocs((prev) => prev.filter((d) => d.id !== docId));
+    recordAuditLog("Eliminar Documento do Scanner", "document", "SUCCESS", `Doc ID: ${docId}`);
+    playSfx("click");
+  };
+
+  const clearScannedDocs = () => {
+    setScannedDocs([]);
+    recordAuditLog("Limpar Todos os Documentos do Scanner", "document", "SUCCESS", "Base limpa pelo utilizador");
+    playSfx("click");
   };
 
   const convertDocToKnowledge = (docId: string) => {
@@ -2529,6 +2597,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         runPhase1EngineTests,
         isExecutingTask,
         uploadAndScanDoc,
+        uploadAndScanBatchDocs,
+        deleteScannedDoc,
+        clearScannedDocs,
         convertDocToKnowledge,
         convertDocToTasks,
         updateDocStatus,
