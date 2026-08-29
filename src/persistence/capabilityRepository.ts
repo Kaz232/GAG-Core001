@@ -4,7 +4,7 @@
  */
 
 import { dbClient } from "./supabaseClient";
-import { INITIAL_CAPABILITIES_DATA } from "../registry/capabilityRegistry";
+import { capabilityRegistry } from "../registry/capabilityRegistry";
 
 export interface CapabilityRecord {
   id: string;
@@ -43,32 +43,20 @@ export class CapabilityRepository {
   }
 
   private async seedDefaults(): Promise<void> {
-    for (const c of INITIAL_CAPABILITIES_DATA) {
+    const list = capabilityRegistry.getAll();
+    for (const c of list) {
       const rec: CapabilityRecord = {
         id: c.id,
         name: c.name,
         description: c.description,
-        category: c.category,
+        category: c.domain,
         risk_level: c.riskLevel,
         enabled: c.enabled,
-        default_skills: c.defaultSkills,
-        default_tools: c.defaultTools,
-        compatible_agents: c.compatibleAgents,
+        default_skills: c.requiredSkills,
+        default_tools: c.requiredTools,
+        compatible_agents: ["agent-kia"],
       };
       await dbClient.upsert("capabilities", rec, "id");
-
-      for (const agentId of c.compatibleAgents) {
-        await dbClient.upsert(
-          "agent_capabilities",
-          {
-            id: `ac_${agentId}_${c.id}`,
-            agent_id: agentId,
-            capability_id: c.id,
-            proficiency: agentId.includes("kia") ? "MASTER" : "EXPERT",
-          },
-          "id"
-        );
-      }
     }
   }
 

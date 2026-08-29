@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient, User as SupabaseUser, Session } from "@supabase/supabase-js";
 import { User, UserRole, AuthSession } from "../types";
+import { dbClient } from "../persistence/supabaseClient";
 
 let supabaseInstance: SupabaseClient | null = null;
 const metaEnv = (import.meta as any).env || {};
@@ -51,6 +52,9 @@ export function saveSupabaseConfig(url: string, anonKey: string): { success: boo
   
   // Reset singleton so next call re-instantiates with new creds
   supabaseInstance = null;
+  try {
+    dbClient.reloadConfig();
+  } catch {}
   return { success: true };
 }
 

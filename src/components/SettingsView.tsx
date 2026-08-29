@@ -25,6 +25,7 @@ import { useApp } from "../context/AppContext";
 import { AuthGateway } from "./AuthGateway";
 import { speakNaturalText } from "../utils/audio";
 import { PwaInstallModal } from "./PwaInstallModal";
+import { SupabaseStatusIndicator } from "./SupabaseStatusIndicator";
 
 export const SettingsView: React.FC = () => {
   const [showPwaModal, setShowPwaModal] = useState(false);
@@ -231,6 +232,8 @@ export const SettingsView: React.FC = () => {
           <p className="text-xs text-slate-300 leading-relaxed">
             O GAG Core opera com persistência resiliente local e permite sincronização nativa com Supabase PostgreSQL para equipas distribuídas.
           </p>
+
+          <SupabaseStatusIndicator mode="card" />
 
           <div className="space-y-3 text-xs">
             <div>

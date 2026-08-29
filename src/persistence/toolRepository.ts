@@ -4,7 +4,7 @@
  */
 
 import { dbClient } from "./supabaseClient";
-import { INITIAL_TOOLS_DATA } from "../registry/toolRegistry";
+import { toolRegistry } from "../registry/toolRegistry";
 
 export interface ToolRecord {
   id: string;
@@ -36,18 +36,19 @@ export class ToolRepository {
   }
 
   private async seedDefaults(): Promise<void> {
-    for (const t of INITIAL_TOOLS_DATA) {
+    const list = toolRegistry.getAll();
+    for (const t of list) {
       const rec: ToolRecord = {
         id: t.id,
         name: t.name,
         description: t.description,
-        type: t.type,
+        type: "INTERNAL",
         category: t.category,
         status: t.status,
-        enabled: t.enabled,
-        permissions: t.permissions,
+        enabled: t.status !== "DISABLED",
+        permissions: [],
         risk_level: t.riskLevel,
-        configuration: t.configuration || {},
+        configuration: {},
       };
       await dbClient.upsert("tools", rec, "id");
     }

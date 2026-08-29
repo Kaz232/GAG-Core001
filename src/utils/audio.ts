@@ -1,4 +1,5 @@
 // Audio helper utility for GAG Core UI feedback & Gemini TTS Playback
+import { wakeWordDetector } from "./wakeWordDetector";
 
 let audioCtx: AudioContext | null = null;
 let currentTtsSource: AudioBufferSourceNode | null = null;
@@ -16,14 +17,83 @@ export function getAudioContext(): AudioContext {
 }
 
 export function playSfx(
-  type: "success" | "action" | "click" | "notification" | "warning" | "execute" | "wake_activation",
+  type:
+    | "success"
+    | "action"
+    | "click"
+    | "notification"
+    | "warning"
+    | "execute"
+    | "wake_activation"
+    | "tamagotchi_happy"
+    | "tamagotchi_love"
+    | "tamagotchi_pop"
+    | "auto_send",
   volume = 0.3
 ) {
   try {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
 
-    if (type === "wake_activation") {
+    if (type === "auto_send") {
+      // Futuristic swift whoosh & confirmation pop
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(1200, now + 0.12);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(volume * 0.3, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.18);
+    } else if (type === "tamagotchi_happy") {
+      // Playful rising 3-note arcade chord (C5 -> E5 -> G5 -> C6)
+      const freqs = [523.25, 659.25, 783.99, 1046.5];
+      freqs.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+        gain.gain.setValueAtTime(0.001, now + idx * 0.06);
+        gain.gain.linearRampToValueAtTime(volume * 0.25, now + idx * 0.06 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.06 + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.06);
+        osc.stop(now + idx * 0.06 + 0.2);
+      });
+    } else if (type === "tamagotchi_love") {
+      // Warm sparkling bell chord (A5 -> C#6 -> E6)
+      const freqs = [880.0, 1108.73, 1318.51];
+      freqs.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+        gain.gain.setValueAtTime(0.001, now + idx * 0.08);
+        gain.gain.linearRampToValueAtTime(volume * 0.28, now + idx * 0.08 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.35);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + idx * 0.08);
+        osc.stop(now + idx * 0.08 + 0.35);
+      });
+    } else if (type === "tamagotchi_pop") {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(700, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.05);
+      gain.gain.setValueAtTime(volume * 0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.06);
+    } else if (type === "wake_activation") {
       // Futuristic two-tone rising chime (Jarvis / Alexa style)
       const osc1 = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
@@ -110,6 +180,9 @@ export function playSfx(
 
 export function stopTtsAudio() {
   isCurrentlySpeaking = false;
+  try {
+    wakeWordDetector.setMutedForPlayback(false);
+  } catch {}
   if (currentTtsSource) {
     try {
       currentTtsSource.stop();
@@ -157,10 +230,14 @@ export async function playPcmAudio(base64Data: string, sampleRate = 24000): Prom
   isCurrentlySpeaking = true;
 
   return new Promise((resolve) => {
+    wakeWordDetector.setMutedForPlayback(true);
     source.onended = () => {
       if (currentTtsSource === source) {
         currentTtsSource = null;
         isCurrentlySpeaking = false;
+        try {
+          wakeWordDetector.setMutedForPlayback(false);
+        } catch {}
       }
       resolve();
     };
@@ -230,12 +307,23 @@ export async function speakNaturalText(
             utterance.voice = ptVoice;
           }
 
+          utterance.onstart = () => {
+            try {
+              wakeWordDetector.setMutedForPlayback(true);
+            } catch {}
+          };
           utterance.onend = () => {
             isCurrentlySpeaking = false;
+            try {
+              wakeWordDetector.setMutedForPlayback(false);
+            } catch {}
             onEnd?.();
           };
           utterance.onerror = (e) => {
             isCurrentlySpeaking = false;
+            try {
+              wakeWordDetector.setMutedForPlayback(false);
+            } catch {}
             onError?.(e);
             onEnd?.();
           };
@@ -300,12 +388,23 @@ export async function speakNaturalText(
       const utterance = new SpeechSynthesisUtterance(voiceSnippet);
       utterance.lang = "pt-PT";
       utterance.rate = 1.05;
+      utterance.onstart = () => {
+        try {
+          wakeWordDetector.setMutedForPlayback(true);
+        } catch {}
+      };
       utterance.onend = () => {
         isCurrentlySpeaking = false;
+        try {
+          wakeWordDetector.setMutedForPlayback(false);
+        } catch {}
         onEnd?.();
       };
       utterance.onerror = (e) => {
         isCurrentlySpeaking = false;
+        try {
+          wakeWordDetector.setMutedForPlayback(false);
+        } catch {}
         onError?.(e);
         onEnd?.();
       };

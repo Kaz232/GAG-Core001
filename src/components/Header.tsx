@@ -26,6 +26,7 @@ import {
 import { useApp } from "../context/AppContext";
 import { UserRole } from "../types";
 import { PwaInstallModal } from "./PwaInstallModal";
+import { BackendStatusIndicator } from "./BackendStatusIndicator";
 
 export const Header: React.FC = () => {
   const {
@@ -112,6 +113,11 @@ export const Header: React.FC = () => {
             {isKiaThinking ? "KIA a Processar..." : "KIA Ativa & Pronta"}
           </span>
         </div>
+
+        {/* Backend & Supabase Connectivity Status Indicator */}
+        <div className="flex items-center pl-2">
+          <BackendStatusIndicator />
+        </div>
       </div>
 
       {/* Center Quick Search Trigger */}
@@ -160,17 +166,18 @@ export const Header: React.FC = () => {
         {/* High-Impact Global Synergy Trigger Button */}
         <button
           onClick={() => setIsSynergyModalOpen(true)}
-          className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs transition-all shadow-md shadow-amber-500/30 hover:scale-105 active:scale-95 group"
+          className="flex items-center space-x-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-extrabold text-xs transition-all shadow-md shadow-amber-500/30 hover:scale-105 active:scale-95 group"
           title="Disparar Sinergia Operacional Imediata em todos os 13 Agentes"
         >
           <Zap className="w-3.5 h-3.5 fill-black text-black group-hover:animate-bounce" />
-          <span className="font-black tracking-wide">⚡ Disparar Sinergia</span>
+          <span className="font-black tracking-wide hidden sm:inline">⚡ Disparar Sinergia</span>
+          <span className="font-black tracking-wide sm:hidden">⚡ Sinergia</span>
         </button>
 
         {/* Quick Enterprise Tools: Autocura, Simulator & Kaza Webhooks */}
         <button
           onClick={() => setActiveTab("incidents")}
-          className="hidden lg:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-semibold transition-colors"
+          className="hidden 2xl:flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 text-xs font-semibold transition-colors"
           title="Central de Autocura e Resolução Automática de Erros"
         >
           <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
@@ -179,7 +186,7 @@ export const Header: React.FC = () => {
 
         <button
           onClick={() => setIsScenarioModalOpen(true)}
-          className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 text-indigo-300 text-xs font-semibold transition-colors"
+          className="hidden 2xl:flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/35 text-indigo-300 text-xs font-semibold transition-colors"
           title="Simulador de Cenários Preditivos & Risco"
         >
           <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
@@ -188,31 +195,31 @@ export const Header: React.FC = () => {
 
         <button
           onClick={() => setIsKazaModalOpen(true)}
-          className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 text-xs font-semibold transition-colors"
+          className="hidden 2xl:flex items-center space-x-1 px-2 py-1.5 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/35 text-cyan-300 text-xs font-semibold transition-colors"
           title="Kaza Core Webhook Dispatcher 24/7"
         >
           <Radio className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Kaza Dispatcher</span>
+          <span>Kaza</span>
         </button>
 
         {/* Synergy Tour Button */}
         <button
           onClick={() => setShowSynergyTour(true)}
-          className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/20 to-yellow-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all shadow-sm"
+          className="hidden xl:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/20 to-yellow-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all shadow-sm"
           title="Abrir Onboarding & Tour de Sinergia dos Agentes"
         >
           <Zap className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-          <span className="hidden md:inline">Tour Sinergia</span>
+          <span>Tour Sinergia</span>
         </button>
 
         {/* PWA Install Button */}
         <button
           onClick={() => setShowPwaModal(true)}
-          className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 text-xs font-semibold transition-colors"
+          className="hidden lg:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 text-xs font-semibold transition-colors"
           title="Instalar GAG Core OS como Aplicativo Nativo (PWA)"
         >
           <Smartphone className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden sm:inline">Instalar App</span>
+          <span className="hidden xl:inline">Instalar App</span>
         </button>
 
         {/* Wake Word "KIA" Hands-Free Detector Toggle */}

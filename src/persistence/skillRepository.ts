@@ -4,7 +4,7 @@
  */
 
 import { dbClient } from "./supabaseClient";
-import { INITIAL_SKILLS_DATA } from "../registry/skillRegistry";
+import { skillRegistry } from "../registry/skillRegistry";
 
 export interface SkillRecord {
   id: string;
@@ -38,7 +38,8 @@ export class SkillRepository {
   }
 
   private async seedDefaults(): Promise<void> {
-    for (const s of INITIAL_SKILLS_DATA) {
+    const list = skillRegistry.getAll();
+    for (const s of list) {
       const rec: SkillRecord = {
         id: s.id,
         name: s.name,

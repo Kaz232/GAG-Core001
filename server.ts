@@ -247,7 +247,8 @@ app.post("/api/kia/stream", async (req, res) => {
   const attemptedModelErrors: { model: string; error: string; timeMs: number }[] = [];
 
   const systemInstruction = `Tu és a KIA (Knowledge Intelligent Agent), a inteligência-mestre e coordenadora da GAG Visual (Luanda/Angola).
-Responde de forma executiva, objetiva, natural, concisa e sem demoras em português.`;
+Responde de forma executiva, objetiva, natural, concisa e sem demoras em português.
+Não termines automaticamente as tuas respostas com perguntas clichê como 'Desejas que eu...', 'Preferes que...', 'Posso continuar...' ou 'O que desejas fazer?'. Só deves fazer perguntas se alguma informação indispensável estiver estritamente em falta para concluir a ação.`;
 
   const conversationContext = `Utilizador: ${userName} (${userRole})
 Histórico recente:
@@ -330,37 +331,195 @@ Mensagem: ${message}`;
     usedModelName = "gag-kia-local-heuristic";
   }
 
-  // Determine intent and action cards from message
+  // Determine intent and action cards from message with comprehensive operational semantics
   const lowerMsg = message.toLowerCase();
   let intent: any = "conversation";
   let capability = "conversation:chat";
   let actionCard: any = undefined;
   let actionPayload: any = undefined;
 
-  if (lowerMsg.includes("tarefa") || lowerMsg.includes("task") || lowerMsg.includes("prazo") || lowerMsg.includes("criar")) {
+  if (
+    lowerMsg.includes("tarefa") ||
+    lowerMsg.includes("task") ||
+    lowerMsg.includes("prazo") ||
+    lowerMsg.includes("criar tarefa") ||
+    lowerMsg.includes("cria uma tarefa") ||
+    lowerMsg.includes("adiciona tarefa")
+  ) {
     intent = "task";
     capability = "task:create";
+    const cleanTitle = message
+      .replace(/^(cria|criar|adiciona|adicionar|nova tarefa:?|cria uma tarefa para|cria uma tarefa de)\s*/i, "")
+      .trim()
+      .slice(0, 60);
+
+    let assignedAgentId = "agent-kia";
+    if (lowerMsg.includes("copy") || lowerMsg.includes("texto") || lowerMsg.includes("redação") || lowerMsg.includes("anúncio")) {
+      assignedAgentId = "agent-copywriter";
+    } else if (lowerMsg.includes("arte") || lowerMsg.includes("design") || lowerMsg.includes("imagem") || lowerMsg.includes("veo")) {
+      assignedAgentId = "agent-art-director";
+    } else if (lowerMsg.includes("tráfego") || lowerMsg.includes("campanha") || lowerMsg.includes("ads") || lowerMsg.includes("roas")) {
+      assignedAgentId = "agent-campaigns";
+    } else if (lowerMsg.includes("scanner") || lowerMsg.includes("documento") || lowerMsg.includes("ocr")) {
+      assignedAgentId = "agent-scanner";
+    } else if (lowerMsg.includes("automação") || lowerMsg.includes("kaza") || lowerMsg.includes("webhook")) {
+      assignedAgentId = "agent-automation-kaza";
+    } else if (lowerMsg.includes("rede") || lowerMsg.includes("cisco") || lowerMsg.includes("infra")) {
+      assignedAgentId = "agent-infra-network";
+    }
+
     actionCard = {
       type: "task_created",
-      title: `Tarefa Criada: ${message.replace(/^(cria|criar|adiciona|nova tarefa:?)\s*/i, "").slice(0, 45)}`,
-      description: `Atribuída com prioridade ALTA. Registada no backlog.`,
-      actionLabel: "Ver no Backlog",
+      title: `Tarefa Criada: ${cleanTitle || "Nova Ordem de Trabalho"}`,
+      description: `Atribuída ao agente ${assignedAgentId} com prioridade ALTA. Registada no backlog.`,
+      actionLabel: "Ver no Backlog de Tarefas",
+      actionUrl: "#tab=tasks",
     };
     actionPayload = {
-      title: message.replace(/^(cria|criar|adiciona|nova tarefa:?)\s*/i, "").slice(0, 50),
+      type: "create_task",
+      title: cleanTitle || "Nova Ordem Operacional",
       description: message,
-      priority: "HIGH",
+      priority: lowerMsg.includes("urgente") || lowerMsg.includes("crítico") ? "CRITICAL" : "HIGH",
       category: "Estratégia & Operações",
-      tags: ["KIA-StreamCreated"],
+      assignedAgentId,
+      tags: ["KIA-Executada", assignedAgentId.replace("agent-", "")],
     };
-  } else if (lowerMsg.includes("sinergia") || lowerMsg.includes("13 agentes") || lowerMsg.includes("disparar")) {
+  } else if (
+    lowerMsg.includes("scanner") ||
+    lowerMsg.includes("digitalizar") ||
+    lowerMsg.includes("fatura") ||
+    lowerMsg.includes("ocr") ||
+    lowerMsg.includes("analisar documento")
+  ) {
+    intent = "document";
+    capability = "document:scan";
+    actionCard = {
+      type: "document_processed",
+      title: "🔍 Scanner Documental Inteligente",
+      description: "Módulo de OCR e extração estruturada de dados ativado.",
+      actionLabel: "Abrir Scanner",
+      actionUrl: "#tab=scanner",
+    };
+    actionPayload = {
+      type: "navigate",
+      tab: "scanner",
+    };
+  } else if (
+    lowerMsg.includes("sinergia") ||
+    lowerMsg.includes("13 agentes") ||
+    lowerMsg.includes("disparar sinergia") ||
+    lowerMsg.includes("mobilizar") ||
+    lowerMsg.includes("orquestrar")
+  ) {
     intent = "internal_tool";
     capability = "agent_orchestration";
     actionCard = {
       type: "skill_executed",
       title: "⚡ Sinergia Multi-Agente em Execução",
-      description: "13 agentes mobilizados para alinhamento operacional.",
+      description: "Todos os 13 agentes mobilizados para alinhamento operacional e execução simultânea.",
       actionLabel: "Acompanhar Sinergia",
+      actionUrl: "#modal=synergy",
+    };
+    actionPayload = {
+      type: "trigger_synergy",
+      goal: message,
+    };
+  } else if (
+    lowerMsg.includes("knowledge") ||
+    lowerMsg.includes("base de conhecimento") ||
+    lowerMsg.includes("guardar na base") ||
+    lowerMsg.includes("norma técnica")
+  ) {
+    intent = "knowledge";
+    capability = "knowledge:create";
+    const kbTitle = message.replace(/^(adiciona|guarda|salva|inserir na base de conhecimento:?)\s*/i, "").trim().slice(0, 50);
+    actionCard = {
+      type: "knowledge_added",
+      title: `Artigo Guardado: ${kbTitle || "Novo Processo Operacional"}`,
+      description: "Indexado na Base de Conhecimento com conformidade da Norma Técnica.",
+      actionLabel: "Ver no Knowledge Base",
+      actionUrl: "#tab=knowledge",
+    };
+    actionPayload = {
+      type: "create_knowledge",
+      title: kbTitle || "Processo Operacional GAG",
+      content: message,
+      category: "INTERNAL_PROCESS",
+      tags: ["KIA-Ingestion", "NormaTecnica"],
+    };
+  } else if (
+    lowerMsg.includes("incidente") ||
+    lowerMsg.includes("autocura") ||
+    lowerMsg.includes("resolver erros") ||
+    lowerMsg.includes("reparar") ||
+    lowerMsg.includes("corrigir sistema")
+  ) {
+    intent = "system_implementation";
+    capability = "system:auto_heal";
+    actionCard = {
+      type: "review_needed",
+      title: "🛡️ Autocura do Sistema Executada",
+      description: "Diagnóstico de integridade validado e trilha de auditoria sincronizada.",
+      actionLabel: "Ver Gestor de Incidentes",
+      actionUrl: "#tab=incidents",
+    };
+    actionPayload = {
+      type: "auto_heal",
+    };
+  } else if (
+    lowerMsg.includes("vai para") ||
+    lowerMsg.includes("abre o") ||
+    lowerMsg.includes("abre a") ||
+    lowerMsg.includes("mostra o") ||
+    lowerMsg.includes("mostra as") ||
+    lowerMsg.includes("muda para")
+  ) {
+    let targetTab = "dashboard";
+    let tabLabel = "Dashboard";
+    if (lowerMsg.includes("tarefa") || lowerMsg.includes("backlog") || lowerMsg.includes("kanban")) {
+      targetTab = "tasks";
+      tabLabel = "Tarefas & Backlog";
+    } else if (lowerMsg.includes("scanner") || lowerMsg.includes("doc")) {
+      targetTab = "scanner";
+      tabLabel = "Scanner Documental";
+    } else if (lowerMsg.includes("knowledge") || lowerMsg.includes("conhecimento")) {
+      targetTab = "knowledge";
+      tabLabel = "Knowledge Base";
+    } else if (lowerMsg.includes("agente") || lowerMsg.includes("equipa") || lowerMsg.includes("especialista")) {
+      targetTab = "agents";
+      tabLabel = "Equipa de Agentes";
+    } else if (lowerMsg.includes("incidente") || lowerMsg.includes("alerta") || lowerMsg.includes("erro")) {
+      targetTab = "incidents";
+      tabLabel = "Gestor de Incidentes";
+    } else if (lowerMsg.includes("whatsapp")) {
+      targetTab = "whatsapp";
+      tabLabel = "WhatsApp 24/7";
+    } else if (lowerMsg.includes("estúdio") || lowerMsg.includes("studio") || lowerMsg.includes("veo") || lowerMsg.includes("multimodal")) {
+      targetTab = "studio";
+      tabLabel = "Estúdio Multimodal";
+    } else if (lowerMsg.includes("calendário") || lowerMsg.includes("agenda") || lowerMsg.includes("evento")) {
+      targetTab = "calendar";
+      tabLabel = "Calendário Estratégico";
+    } else if (lowerMsg.includes("auditoria") || lowerMsg.includes("audit") || lowerMsg.includes("log")) {
+      targetTab = "audit";
+      tabLabel = "Trilha de Auditoria";
+    } else if (lowerMsg.includes("definições") || lowerMsg.includes("configuraç") || lowerMsg.includes("settings")) {
+      targetTab = "settings";
+      tabLabel = "Configurações do Sistema";
+    }
+
+    intent = "internal_tool";
+    capability = "navigation:tab";
+    actionCard = {
+      type: "skill_executed",
+      title: `Navegar para ${tabLabel}`,
+      description: `Ecrã ${tabLabel} acedido com sucesso.`,
+      actionLabel: `Abrir ${tabLabel}`,
+      actionUrl: `#tab=${targetTab}`,
+    };
+    actionPayload = {
+      type: "navigate",
+      tab: targetTab,
     };
   }
 
@@ -412,7 +571,8 @@ app.post("/api/kia/chat", async (req, res) => {
 
     // Streamlined system instruction for instant response generation (<1s)
     const systemInstruction = `Tu és a KIA (Knowledge Intelligent Agent), a inteligência-mestre e coordenadora da GAG Visual (Luanda/Angola).
-Responde de forma executiva, objetiva, natural e sem demoras.
+Responde de forma executiva, objetiva, natural, concisa e sem demoras em português.
+Não termines automaticamente as tuas respostas com perguntas clichê como 'Desejas que eu...', 'Preferes que...', 'Posso continuar...' ou 'O que desejas fazer?'. Só pergunta se faltar informação estritamente indispensável.
 Retorna SEMPRE um JSON rigoroso:
 {
   "content": "Resposta executiva, clara e rápida da KIA",

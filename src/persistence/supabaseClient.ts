@@ -13,6 +13,24 @@ export interface DatabaseConfig {
   isConfigured: boolean;
 }
 
+export type SupabaseConnectionStatus =
+  | "CONNECTED"
+  | "DISCONNECTED"
+  | "FALLBACK_LOCAL"
+  | "NOT_CONFIGURED"
+  | "CHECKING";
+
+export interface SupabaseHealthState {
+  status: SupabaseConnectionStatus;
+  isConfigured: boolean;
+  isConnected: boolean;
+  isFallbackActive: boolean;
+  lastChecked: string;
+  latencyMs: number | null;
+  errorMessage: string | null;
+  endpointUrl?: string;
+}
+
 // In-process resilient relational storage engine
 class InMemoryRelationalEngine {
   private tables: Map<string, Map<string, any>> = new Map();
@@ -139,10 +157,31 @@ export class SupabasePersistenceClient {
   private client: SupabaseClient | null = null;
   private localEngine: InMemoryRelationalEngine = new InMemoryRelationalEngine();
   private config: DatabaseConfig;
+  private healthState: SupabaseHealthState;
+  private listeners: Set<(state: SupabaseHealthState) => void> = new Set();
+  private healthCheckInterval: any = null;
 
   private constructor() {
     this.config = this.resolveConfig();
+    this.healthState = {
+      status: this.config.isConfigured ? "CHECKING" : "NOT_CONFIGURED",
+      isConfigured: this.config.isConfigured,
+      isConnected: false,
+      isFallbackActive: true,
+      lastChecked: new Date().toISOString(),
+      latencyMs: null,
+      errorMessage: this.config.isConfigured ? null : "Credenciais do Supabase não configuradas. Modo Local Resiliente ativo.",
+      endpointUrl: this.config.url || undefined,
+    };
     this.initializeSupabase();
+
+    // Start background health checking if in browser context
+    if (typeof window !== "undefined") {
+      this.checkHealth();
+      this.healthCheckInterval = setInterval(() => {
+        this.checkHealth();
+      }, 35000);
+    }
   }
 
   public static getInstance(): SupabasePersistenceClient {
@@ -150,6 +189,103 @@ export class SupabasePersistenceClient {
       SupabasePersistenceClient.instance = new SupabasePersistenceClient();
     }
     return SupabasePersistenceClient.instance;
+  }
+
+  public subscribeHealth(callback: (state: SupabaseHealthState) => void): () => void {
+    this.listeners.add(callback);
+    callback({ ...this.healthState });
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  private notifyHealthChange(): void {
+    const clone = { ...this.healthState };
+    this.listeners.forEach((listener) => {
+      try {
+        listener(clone);
+      } catch (err) {
+        console.error("Erro no ouvinte de saúde do Supabase:", err);
+      }
+    });
+  }
+
+  public getHealth(): SupabaseHealthState {
+    return { ...this.healthState };
+  }
+
+  public async checkHealth(): Promise<SupabaseHealthState> {
+    this.config = this.resolveConfig();
+
+    if (!this.config.isConfigured) {
+      this.healthState = {
+        status: "NOT_CONFIGURED",
+        isConfigured: false,
+        isConnected: false,
+        isFallbackActive: true,
+        lastChecked: new Date().toISOString(),
+        latencyMs: null,
+        errorMessage: "Credenciais do Supabase não configuradas no sistema. Modo Local Resiliente em execução.",
+        endpointUrl: undefined,
+      };
+      this.notifyHealthChange();
+      return this.getHealth();
+    }
+
+    if (!this.client) {
+      this.initializeSupabase();
+    }
+
+    const startTime = Date.now();
+    try {
+      if (!this.client) throw new Error("Cliente Supabase não instanciado.");
+
+      // Test lightweight connectivity with 4.5s timeout race
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout de conexão (>4.5s)")), 4500)
+      );
+
+      // Simple auth or query ping
+      const pingPromise = this.client.auth.getSession();
+      await Promise.race([pingPromise, timeoutPromise]);
+
+      const latencyMs = Date.now() - startTime;
+
+      this.healthState = {
+        status: "CONNECTED",
+        isConfigured: true,
+        isConnected: true,
+        isFallbackActive: false,
+        lastChecked: new Date().toISOString(),
+        latencyMs,
+        errorMessage: null,
+        endpointUrl: this.config.url,
+      };
+    } catch (err: any) {
+      const latencyMs = Date.now() - startTime;
+      const errMsg = err?.message || "Conexão ao Supabase Backend indisponível ou inacessível.";
+
+      this.healthState = {
+        status: "DISCONNECTED",
+        isConfigured: true,
+        isConnected: false,
+        isFallbackActive: true,
+        lastChecked: new Date().toISOString(),
+        latencyMs,
+        errorMessage: `Desconectado do Supabase Backend: ${errMsg}. Modo Local Resiliente ativo para garantir zero perda de dados.`,
+        endpointUrl: this.config.url,
+      };
+    }
+
+    this.notifyHealthChange();
+    return this.getHealth();
+  }
+
+  public reloadConfig(): void {
+    this.config = this.resolveConfig();
+    this.client = null;
+    this.initializeSupabase();
+    this.checkHealth();
   }
 
   private resolveConfig(): DatabaseConfig {
@@ -212,6 +348,10 @@ export class SupabasePersistenceClient {
     return this.config.isConfigured && this.client !== null;
   }
 
+  public isConnected(): boolean {
+    return this.healthState.isConnected;
+  }
+
   public getConfig(): DatabaseConfig {
     return { ...this.config };
   }
@@ -230,9 +370,11 @@ export class SupabasePersistenceClient {
         if (!error && data) {
           this.localEngine.upsert(table, data);
           return data as T;
+        } else if (error) {
+          this.markConnectionDegraded(error.message);
         }
-      } catch (e) {
-        // Fallback to local engine on connection error
+      } catch (e: any) {
+        this.markConnectionDegraded(e?.message);
       }
     }
     // 2. Resilient local engine write
@@ -250,9 +392,11 @@ export class SupabasePersistenceClient {
         if (!error && data) {
           this.localEngine.upsert(table, data, onConflict);
           return data as T;
+        } else if (error) {
+          this.markConnectionDegraded(error.message);
         }
-      } catch (e) {
-        // Fallback
+      } catch (e: any) {
+        this.markConnectionDegraded(e?.message);
       }
     }
     return this.localEngine.upsert(table, record, onConflict) as T;
@@ -265,9 +409,11 @@ export class SupabasePersistenceClient {
         if (!error && data) {
           this.localEngine.upsert(table, data);
           return data as T;
+        } else if (error) {
+          this.markConnectionDegraded(error.message);
         }
-      } catch (e) {
-        // Fallback
+      } catch (e: any) {
+        this.markConnectionDegraded(e?.message);
       }
     }
     return this.localEngine.selectById(table, id) as T | null;
@@ -288,9 +434,11 @@ export class SupabasePersistenceClient {
             this.localEngine.upsert(table, item);
           }
           return data as T[];
+        } else if (error) {
+          this.markConnectionDegraded(error.message);
         }
-      } catch (e) {
-        // Fallback
+      } catch (e: any) {
+        this.markConnectionDegraded(e?.message);
       }
     }
     return this.localEngine.select(table, filter) as T[];
@@ -308,9 +456,11 @@ export class SupabasePersistenceClient {
         if (!error && data) {
           this.localEngine.update(table, id, data);
           return data as T;
+        } else if (error) {
+          this.markConnectionDegraded(error.message);
         }
-      } catch (e) {
-        // Fallback
+      } catch (e: any) {
+        this.markConnectionDegraded(e?.message);
       }
     }
     return this.localEngine.update(table, id, updates) as T | null;
@@ -323,12 +473,28 @@ export class SupabasePersistenceClient {
         if (!error) {
           this.localEngine.delete(table, id);
           return true;
+        } else {
+          this.markConnectionDegraded(error.message);
         }
-      } catch (e) {
-        // Fallback
+      } catch (e: any) {
+        this.markConnectionDegraded(e?.message);
       }
     }
     return this.localEngine.delete(table, id);
+  }
+
+  private markConnectionDegraded(reason?: string): void {
+    if (this.healthState.status !== "DISCONNECTED") {
+      this.healthState = {
+        ...this.healthState,
+        status: "DISCONNECTED",
+        isConnected: false,
+        isFallbackActive: true,
+        lastChecked: new Date().toISOString(),
+        errorMessage: reason || "Falha recente de comunicação com o Supabase. Modo Local Resiliente ativo.",
+      };
+      this.notifyHealthChange();
+    }
   }
 }
 
